@@ -1,0 +1,14 @@
+{
+  "expo": {
+    "name": "Arna",
+    "slug": "arna",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "arna",
+    "userInterfaceStyle": "automatic",
+    "plugins": ["expo-router"],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
