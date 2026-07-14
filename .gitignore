@@ -27,6 +27,8 @@ yarn-debug.*
 yarn-error.*
 
 # Local environment
+.env
+.env.local
 .env*.local
 
 # TypeScript

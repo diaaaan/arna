@@ -1,3 +1,9 @@
+import type { ThoughtInterpretation } from '../../mind/types/interpretation';
+import {
+  isThoughtInterpretation,
+  normalizeStoredThoughtInterpretation,
+} from '../../mind/validation/interpretation-validator';
+
 export type ThoughtSource = 'manual';
 export type ThoughtStatus = 'raw';
 
@@ -8,6 +14,7 @@ export type Thought = {
   updatedAt: string;
   source: ThoughtSource;
   status: ThoughtStatus;
+  analysis?: ThoughtInterpretation;
 };
 
 export function createThought(rawText: string): Thought {
@@ -36,6 +43,30 @@ export function isThought(value: unknown): value is Thought {
     typeof thought.createdAt === 'string' &&
     typeof thought.updatedAt === 'string' &&
     thought.source === 'manual' &&
-    thought.status === 'raw'
+    thought.status === 'raw' &&
+    (thought.analysis === undefined || isThoughtInterpretation(thought.analysis))
   );
+}
+
+export function normalizeStoredThought(value: unknown): Thought | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const storedThought = value as Record<string, unknown>;
+  const analysis =
+    storedThought.analysis === undefined
+      ? undefined
+      : normalizeStoredThoughtInterpretation(storedThought.analysis);
+
+  if (storedThought.analysis !== undefined && analysis === null) {
+    return null;
+  }
+
+  const normalizedThought = {
+    ...storedThought,
+    analysis,
+  };
+
+  return isThought(normalizedThought) ? normalizedThought : null;
 }

@@ -6,6 +6,8 @@
 - [x] Thought capture
 - [x] Local persistence
 - [ ] Thought feed
+- [x] Thought library
+- [x] AI thought interpretation
 
 ## Next
 

@@ -12,13 +12,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   SubmissionFeedback,
   type SubmissionFeedbackMessage,
-} from '../src/components/submission-feedback';
-import { ThoughtInput } from '../src/components/thought-input';
-import { createThought } from '../src/entities/thought/thought';
-import { appendThought } from '../src/storage/thought-storage';
-import { colors, spacing, typography } from '../src/theme/tokens';
+} from '../../src/components/submission-feedback';
+import { ThoughtInput } from '../../src/components/thought-input';
+import { analyzeThought } from '../../src/mind/mind-engine';
+import { createThought } from '../../src/entities/thought/thought';
+import { appendThought } from '../../src/storage/thought-storage';
+import { colors, spacing, typography } from '../../src/theme/tokens';
 
-export default function HomeScreen() {
+export default function CaptureScreen() {
   const [feedback, setFeedback] = useState<SubmissionFeedbackMessage | null>(
     null,
   );
@@ -38,6 +39,11 @@ export default function HomeScreen() {
     try {
       await appendThought(thought);
       showFeedback('Мысль сохранена', 'success');
+      requestAnimationFrame(() => {
+        void analyzeThought(thought).catch(() => {
+          // Analysis is best-effort and must never interrupt thought capture.
+        });
+      });
       return true;
     } catch (error: unknown) {
       console.error('Failed to save thought.', error);
@@ -53,7 +59,7 @@ export default function HomeScreen() {
   }, []);
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
       <View style={styles.appHeader}>
         <Text style={styles.appName}>Arna</Text>
       </View>

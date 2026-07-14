@@ -1,40 +1,43 @@
 import { StyleSheet, Text, View } from 'react-native';
 
 import type { Thought } from '../entities/thought/thought';
-import { colors, radius, spacing, typography } from '../theme/tokens';
+import { colors, spacing, typography } from '../theme/tokens';
+import { ThoughtAnalysis } from './thought-analysis';
 
 type ThoughtItemProps = {
   thought: Thought;
+  onRetryAnalysis: (thought: Thought) => void;
 };
 
 function formatCreatedAt(createdAt: string) {
-  return new Date(createdAt).toLocaleTimeString([], {
+  return new Date(createdAt).toLocaleString([], {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
   });
 }
 
-export function ThoughtItem({ thought }: ThoughtItemProps) {
+export function ThoughtItem({ thought, onRetryAnalysis }: ThoughtItemProps) {
   return (
     <View style={styles.container}>
-      <View style={styles.bubble}>
-        <Text style={styles.rawText}>{thought.rawText}</Text>
-        <Text style={styles.createdAt}>{formatCreatedAt(thought.createdAt)}</Text>
-      </View>
+      <Text style={styles.rawText}>{thought.rawText}</Text>
+      <Text style={styles.createdAt}>{formatCreatedAt(thought.createdAt)}</Text>
+      <ThoughtAnalysis
+        analysis={thought.analysis}
+        onRetry={() => onRetryAnalysis(thought)}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    alignItems: 'flex-end',
-    marginLeft: spacing.xl * 2,
-  },
-  bubble: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderRadius: radius.md,
-    backgroundColor: colors.surface,
+    width: '100%',
+    paddingVertical: spacing.lg,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
   },
   rawText: {
     ...typography.body,
@@ -42,8 +45,7 @@ const styles = StyleSheet.create({
   },
   createdAt: {
     ...typography.caption,
-    alignSelf: 'flex-end',
-    marginTop: spacing.xs,
+    marginTop: spacing.sm,
     color: colors.textSecondary,
   },
 });
