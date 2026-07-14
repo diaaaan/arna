@@ -3,8 +3,8 @@
 ## Current MVP
 
 - [x] Technical foundation
-- [ ] Thought capture
-- [ ] Local persistence
+- [x] Thought capture
+- [x] Local persistence
 - [ ] Thought feed
 
 ## Next
