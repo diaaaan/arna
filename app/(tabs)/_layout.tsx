@@ -32,7 +32,8 @@ export default function TabLayout() {
       }}
     >
       <Tabs.Screen name="index" options={{ title: 'Записать' }} />
-      <Tabs.Screen name="thoughts" options={{ title: 'Мысли' }} />
+      <Tabs.Screen name="collections" options={{ title: 'Коллекции' }} />
+      <Tabs.Screen name="thoughts" options={{ href: null }} />
     </Tabs>
   );
 }

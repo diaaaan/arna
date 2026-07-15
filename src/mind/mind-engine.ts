@@ -1,5 +1,6 @@
 import type { Thought } from '../entities/thought/thought';
 import { updateThoughtAnalysis } from '../storage/thought-storage';
+import { deriveEntities } from './derivation/derive-entities';
 import {
   GeminiServiceError,
   interpretThoughtWithGemini,
@@ -59,5 +60,14 @@ export async function analyzeThought(
   }
 
   await updateThoughtAnalysis(thought.id, interpretation);
+
+  if (interpretation.status === 'success') {
+    try {
+      await deriveEntities(thought, interpretation);
+    } catch {
+      debugLog('Derivation failed');
+    }
+  }
+
   return interpretation;
 }
