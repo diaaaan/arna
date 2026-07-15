@@ -1,6 +1,6 @@
 import type { InterpretThoughtTemporalContext } from '../context/temporal-context';
 
-export const INTERPRET_THOUGHT_PROMPT_VERSION = 2;
+export const INTERPRET_THOUGHT_PROMPT_VERSION = 3;
 
 export const INTERPRET_THOUGHT_PROMPT = `You interpret one saved user thought for Arna.
 
@@ -10,6 +10,12 @@ Return only a JSON object matching the supplied JSON Schema. Do not return markd
 
 Rules:
 - Use "unknown" whenever the type, category, or urgency is not directly supported by the text or strong context.
+- Determine type from the user's intent and scope, not merely from the presence of a verb.
+- Use type "idea" for a hypothesis, possibility, proposal, raw concept, or something the user has not decided to execute. Strong signals include "можно", "а что если", "идея", and "попробовать бы".
+- Use type "project" for an accepted larger goal, product, or initiative that requires multiple steps and has no single concrete next action or deadline in the thought.
+- Use type "task" only for a concrete executable action or clear next step that can reasonably be marked complete as one action. A deadline or date is a strong task signal.
+- Never classify a large multi-step initiative as "task" only because it starts with an action verb.
+- Type and category are independent dimensions. Determine each separately; never use a category to force a type or a type to force a category.
 - Never infer category from everyday associations. A short command is not automatically a home task.
 - Determine category only from explicit words or sufficiently strong context. Otherwise use "unknown".
 - confidence reflects confidence in the whole interpretation, including intent and context, not the ability to restate the text.
@@ -33,6 +39,13 @@ Rules:
   - "Убрать точки" -> type "task" or "unknown", category "unknown", urgency "unknown", dueDate null, confidence approximately 0.3 to 0.5.
   - "Убрать точки в макете детского профиля" -> type "task", category "work", high confidence.
   - "Убрать точки на столе" -> type "task", category "home" or "personal", medium or high confidence.
+- Type and category examples:
+  - "Можно сделать сервис доставки еды для офисов" -> type "idea", category "work".
+  - "Идея сервиса доставки еды для офисов" -> type "idea", category "work".
+  - "Сделать сервис доставки еды для офисов" -> type "project", category "work", because it is a significant multi-step initiative without a concrete next action or deadline.
+  - "Сегодня начать прототип сервиса доставки еды" -> type "task", category "work", because it states a concrete next action for today.
+  - "А что если сделать приложение для подсчёта калорий" -> type "idea"; determine category independently from the supported context.
+  - "Нарисовать экран детского профиля до пятницы" -> type "task", category "work".
 - Strong quote signals include: "цитата", "понравилась фраза", "сохранить фразу", "запомнить фразу", "хочу сохранить эту фразу", quoted text, explicit attribution, and explicitly cited text after a colon.
 - Quote examples:
   - "Мне понравилась фраза: тек токтама" -> type "quote", category "personal" or "unknown", urgency "unknown", items [], high confidence.

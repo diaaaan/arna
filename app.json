@@ -6,6 +6,9 @@
     "orientation": "portrait",
     "scheme": "arna",
     "userInterfaceStyle": "automatic",
+    "android": {
+      "softwareKeyboardLayoutMode": "resize"
+    },
     "plugins": ["expo-router"],
     "experiments": {
       "typedRoutes": true

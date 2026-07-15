@@ -13,6 +13,7 @@ import {
   SubmissionFeedback,
   type SubmissionFeedbackMessage,
 } from '../../src/components/submission-feedback';
+import { AmbientBackground } from '../../src/components/ambient-background';
 import { ThoughtInput } from '../../src/components/thought-input';
 import { analyzeThought } from '../../src/mind/mind-engine';
 import { createThought } from '../../src/entities/thought/thought';
@@ -59,56 +60,81 @@ export default function CaptureScreen() {
   }, []);
 
   return (
-    <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
-      <View style={styles.appHeader}>
-        <Text style={styles.appName}>Arna</Text>
+    <View style={styles.root}>
+      <View pointerEvents="none" style={styles.backgroundLayer}>
+        <AmbientBackground />
       </View>
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.keyboardAvoidingView}
+        style={styles.foreground}
       >
-        <ScrollView
-          contentContainerStyle={styles.captureArea}
-          keyboardDismissMode="none"
-          keyboardShouldPersistTaps="always"
+        <SafeAreaView
+          edges={['top', 'left', 'right']}
+          style={styles.safeArea}
         >
-          <Text style={styles.title}>Что у вас на уме?</Text>
-
-          <View style={styles.inputArea}>
-            <ThoughtInput onSubmit={handleSubmit} />
-            <SubmissionFeedback
-              feedback={feedback}
-              onDismiss={handleFeedbackDismiss}
-            />
+          <View style={styles.appHeader}>
+            <Text style={styles.appName}>Arna</Text>
           </View>
-        </ScrollView>
+
+          <ScrollView
+            style={styles.scrollView}
+            contentContainerStyle={styles.captureArea}
+            keyboardDismissMode="none"
+            keyboardShouldPersistTaps="always"
+          >
+            <Text style={styles.title}>Что у вас на уме?</Text>
+
+            <View style={styles.inputArea}>
+              <ThoughtInput onSubmit={handleSubmit} />
+              <SubmissionFeedback
+                feedback={feedback}
+                onDismiss={handleFeedbackDismiss}
+              />
+            </View>
+          </ScrollView>
+        </SafeAreaView>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
+  root: {
     flex: 1,
     backgroundColor: colors.background,
   },
+  safeArea: {
+    flex: 1,
+  },
+  backgroundLayer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 0,
+  },
+  foreground: {
+    position: 'relative',
+    zIndex: 1,
+    flex: 1,
+  },
   appHeader: {
+    zIndex: 1,
     alignItems: 'center',
     paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.sm,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xs,
   },
   appName: {
     ...typography.appName,
     color: colors.textSecondary,
     textAlign: 'center',
   },
-  keyboardAvoidingView: {
+  scrollView: {
     flex: 1,
   },
   captureArea: {
     flexGrow: 1,
     justifyContent: 'center',
+    alignItems: 'center',
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.lg,
   },
@@ -118,6 +144,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   inputArea: {
-    marginTop: spacing.xl,
+    width: '100%',
+    marginTop: spacing.xxl,
   },
 });

@@ -19,10 +19,10 @@ export default function TabLayout() {
       safeAreaInsets={{ bottom: 0 }}
       screenOptions={{
         headerShown: false,
-        tabBarActiveBackgroundColor: colors.navigationActive,
+        tabBarActiveBackgroundColor: colors.navigation.active,
         tabBarActiveTintColor: colors.textPrimary,
         tabBarHideOnKeyboard: true,
-        tabBarInactiveTintColor: colors.textSecondary,
+        tabBarInactiveTintColor: colors.navigation.inactive,
         tabBarItemStyle: styles.tabBarItem,
         tabBarLabelStyle: typography.navigationLabel,
         tabBarStyle: [
@@ -47,7 +47,7 @@ const styles = StyleSheet.create({
     padding: navigation.tabBarItemInset,
     borderTopWidth: 0,
     borderRadius: radius.full,
-    backgroundColor: colors.navigationBackground,
+    backgroundColor: colors.navigation.background,
     ...shadows.floatingTabBar,
   },
   tabBarItem: {

@@ -18,6 +18,7 @@ import type { QuoteItem } from '../../src/entities/quote-item/quote-item';
 import type { ShoppingItem } from '../../src/entities/shopping-item/shopping-item';
 import type { Task } from '../../src/entities/task/task';
 import type { UnsortedThought } from '../../src/entities/unsorted-thought/unsorted-thought';
+import type { InterpretationCategory } from '../../src/mind/types/interpretation';
 import {
   CollectionList,
   type CollectionListItem,
@@ -34,6 +35,7 @@ import {
   loadTasks,
   toggleTaskCompleted,
 } from '../../src/storage/task-storage';
+import { loadThoughts } from '../../src/storage/thought-storage';
 import { loadUnsortedThoughts } from '../../src/storage/unsorted-storage';
 import {
   colors,
@@ -56,7 +58,19 @@ type Filter = (typeof filters)[number]['id'];
 type LoadState = 'loading' | 'ready' | 'error';
 type MixedCollectionItem = CollectionListItem & {
   typeLabel: 'Задача' | 'Покупка' | 'Идея' | 'Цитата' | 'Неразобранное';
+  categoryLabel: string;
   text: string;
+};
+
+const categoryLabels: Record<InterpretationCategory, string> = {
+  work: 'Работа',
+  home: 'Дом',
+  health: 'Здоровье',
+  finance: 'Финансы',
+  learning: 'Обучение',
+  creativity: 'Творчество',
+  personal: 'Личное',
+  unknown: 'Без категории',
 };
 
 function sortNewestFirst<Item extends CollectionListItem>(items: Item[]) {
@@ -82,7 +96,7 @@ function getMixedText(item: MixedCollectionItem) {
 }
 
 function getMixedLabel(item: MixedCollectionItem) {
-  return item.typeLabel;
+  return `${item.typeLabel} · ${item.categoryLabel}`;
 }
 
 export default function CollectionsScreen() {
@@ -95,6 +109,9 @@ export default function CollectionsScreen() {
   const [unsortedThoughts, setUnsortedThoughts] = useState<UnsortedThought[]>(
     [],
   );
+  const [categoriesByThoughtId, setCategoriesByThoughtId] = useState<
+    Record<string, InterpretationCategory>
+  >({});
   const insets = useSafeAreaInsets();
 
   const loadCollections = useCallback(async (showLoading = true) => {
@@ -103,20 +120,36 @@ export default function CollectionsScreen() {
     }
 
     try {
-      const [storedTasks, storedShopping, storedIdeas, storedQuotes, unsorted] =
-        await Promise.all([
-          loadTasks(),
-          loadShoppingItems(),
-          loadIdeaItems(),
-          loadQuoteItems(),
-          loadUnsortedThoughts(),
-        ]);
+      const [
+        storedTasks,
+        storedShopping,
+        storedIdeas,
+        storedQuotes,
+        unsorted,
+        storedThoughts,
+      ] = await Promise.all([
+        loadTasks(),
+        loadShoppingItems(),
+        loadIdeaItems(),
+        loadQuoteItems(),
+        loadUnsortedThoughts(),
+        loadThoughts(),
+      ]);
 
       setTasks(sortNewestFirst(storedTasks));
       setShoppingItems(sortNewestFirst(storedShopping));
       setIdeas(sortNewestFirst(storedIdeas));
       setQuotes(sortNewestFirst(storedQuotes));
       setUnsortedThoughts(sortNewestFirst(unsorted));
+      setCategoriesByThoughtId(
+        storedThoughts.reduce<Record<string, InterpretationCategory>>(
+          (categories, thought) => {
+            categories[thought.id] = thought.analysis?.category ?? 'unknown';
+            return categories;
+          },
+          {},
+        ),
+      );
       setLoadState('ready');
     } catch (error: unknown) {
       console.error('Failed to load collections.', error);
@@ -131,18 +164,23 @@ export default function CollectionsScreen() {
   );
 
   const mixedItems = useMemo<MixedCollectionItem[]>(
-    () =>
-      sortNewestFirst([
+    () => {
+      const getCategoryLabel = (originThoughtId: string) =>
+        categoryLabels[categoriesByThoughtId[originThoughtId] ?? 'unknown'];
+
+      return sortNewestFirst([
         ...tasks.map((task) => ({
           id: task.id,
           createdAt: task.createdAt,
           typeLabel: 'Задача' as const,
+          categoryLabel: getCategoryLabel(task.originThoughtId),
           text: task.title,
         })),
         ...shoppingItems.map((shoppingItem) => ({
           id: shoppingItem.id,
           createdAt: shoppingItem.createdAt,
           typeLabel: 'Покупка' as const,
+          categoryLabel: getCategoryLabel(shoppingItem.originThoughtId),
           text: `${shoppingItem.title}${
             shoppingItem.quantity === null
               ? ''
@@ -153,22 +191,33 @@ export default function CollectionsScreen() {
           id: idea.id,
           createdAt: idea.createdAt,
           typeLabel: 'Идея' as const,
+          categoryLabel: getCategoryLabel(idea.originThoughtId),
           text: idea.title,
         })),
         ...quotes.map((quote) => ({
           id: quote.id,
           createdAt: quote.createdAt,
           typeLabel: 'Цитата' as const,
+          categoryLabel: getCategoryLabel(quote.originThoughtId),
           text: quote.text,
         })),
         ...unsortedThoughts.map((thought) => ({
           id: thought.id,
           createdAt: thought.createdAt,
           typeLabel: 'Неразобранное' as const,
+          categoryLabel: getCategoryLabel(thought.originThoughtId),
           text: thought.text,
         })),
-      ]),
-    [ideas, quotes, shoppingItems, tasks, unsortedThoughts],
+      ]);
+    },
+    [
+      categoriesByThoughtId,
+      ideas,
+      quotes,
+      shoppingItems,
+      tasks,
+      unsortedThoughts,
+    ],
   );
 
   const handleTaskToggle = useCallback(

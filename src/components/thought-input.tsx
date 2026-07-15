@@ -6,8 +6,18 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 
-import { colors, radius, spacing, typography } from '../theme/tokens';
+import {
+  colors,
+  control,
+  gradients,
+  radius,
+  shadows,
+  spacing,
+  typography,
+  visual,
+} from '../theme/tokens';
 
 type ThoughtInputProps = {
   onSubmit: (rawText: string) => Promise<boolean>;
@@ -16,6 +26,7 @@ type ThoughtInputProps = {
 export function ThoughtInput({ onSubmit }: ThoughtInputProps) {
   const [rawText, setRawText] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
   const inputRef = useRef<TextInput>(null);
   const canSubmit = rawText.trim().length > 0 && !isSubmitting;
 
@@ -52,20 +63,44 @@ export function ThoughtInput({ onSubmit }: ThoughtInputProps) {
 
   return (
     <View style={styles.container}>
-      <TextInput
-        ref={inputRef}
-        value={rawText}
-        onChangeText={setRawText}
-        placeholder="Запишите мысль…"
-        placeholderTextColor={colors.textSecondary}
-        multiline
-        autoFocus
-        blurOnSubmit={false}
-        submitBehavior="newline"
-        textAlignVertical="top"
-        style={styles.input}
-        accessibilityLabel="Новая мысль"
-      />
+      <Pressable
+        accessible={false}
+        onPress={() => inputRef.current?.focus()}
+        style={[styles.inputFrame, isFocused && styles.inputFrameFocused]}
+      >
+        <LinearGradient
+          pointerEvents="none"
+          colors={isFocused ? gradients.inputFocus : gradients.inputIdle}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.inputFrameDecoration}
+        />
+        <View style={styles.inputSurface}>
+          <TextInput
+            ref={inputRef}
+            value={rawText}
+            onChangeText={setRawText}
+            onFocus={() => {
+              setIsFocused(true);
+            }}
+            onBlur={() => {
+              setIsFocused(false);
+            }}
+            onPressIn={() => inputRef.current?.focus()}
+            placeholder="Запишите мысль…"
+            placeholderTextColor={colors.textSecondary}
+            selectionColor={colors.focus}
+            cursorColor={colors.focus}
+            multiline
+            autoFocus
+            blurOnSubmit={false}
+            submitBehavior="newline"
+            textAlignVertical="top"
+            style={styles.input}
+            accessibilityLabel="Новая мысль"
+          />
+        </View>
+      </Pressable>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Отправить мысль"
@@ -89,33 +124,50 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   input: {
-    ...typography.body,
-    minHeight: spacing.xl * 6,
-    maxHeight: spacing.xl * 9,
+    ...typography.input,
+    width: '100%',
+    minHeight: control.inputMinHeight,
+    maxHeight: control.inputMaxHeight,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.lg,
     color: colors.textPrimary,
-    backgroundColor: colors.surface,
+  },
+  inputFrame: {
+    padding: control.strokeWidth,
+    borderRadius: radius.lg,
+  },
+  inputFrameDecoration: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: radius.lg,
+  },
+  inputFrameFocused: {
+    ...shadows.focusGlow,
+  },
+  inputSurface: {
+    overflow: 'hidden',
+    borderRadius: radius.lg,
+    backgroundColor: colors.inputSurface,
   },
   submitButton: {
-    minHeight: spacing.xl + spacing.xl,
+    minHeight: control.buttonMinHeight,
+    alignSelf: 'flex-end',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: spacing.lg,
-    borderRadius: radius.md,
-    backgroundColor: colors.accent,
+    paddingHorizontal: spacing.xl,
+    borderWidth: control.strokeWidth,
+    borderColor: colors.focusMuted,
+    borderRadius: radius.full,
+    backgroundColor: colors.surfaceElevated,
   },
   submitButtonDisabled: {
-    backgroundColor: colors.accentDisabled,
+    backgroundColor: colors.surfaceElevated,
+    opacity: visual.opacity.disabled,
   },
   submitButtonPressed: {
-    opacity: 0.8,
+    opacity: visual.opacity.pressed,
   },
   submitButtonText: {
     ...typography.button,
-    color: colors.onAccent,
+    color: colors.focus,
   },
 });

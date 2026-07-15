@@ -1,7 +1,14 @@
 import { useEffect, useRef } from 'react';
-import { Animated, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
 
-import { colors, radius, spacing, typography } from '../theme/tokens';
+import {
+  colors,
+  control,
+  motion,
+  radius,
+  spacing,
+  typography,
+} from '../theme/tokens';
 
 export type SubmissionFeedbackMessage = {
   id: number;
@@ -13,8 +20,6 @@ type SubmissionFeedbackProps = {
   feedback: SubmissionFeedbackMessage | null;
   onDismiss: (id: number) => void;
 };
-
-const visibleDuration = 1700;
 
 export function SubmissionFeedback({
   feedback,
@@ -33,21 +38,23 @@ export function SubmissionFeedback({
     opacity.setValue(0);
     Animated.timing(opacity, {
       toValue: 1,
-      duration: 160,
+      duration: motion.duration.fast,
+      easing: Easing.bezier(...motion.easing.gentle),
       useNativeDriver: true,
     }).start();
 
     const hideTimer = setTimeout(() => {
       Animated.timing(opacity, {
         toValue: 0,
-        duration: 180,
+        duration: motion.duration.normal,
+        easing: Easing.bezier(...motion.easing.standard),
         useNativeDriver: true,
       }).start(({ finished }) => {
         if (finished) {
           onDismiss(feedback.id);
         }
       });
-    }, visibleDuration);
+    }, motion.duration.feedbackVisible);
 
     return () => {
       clearTimeout(hideTimer);
@@ -93,13 +100,24 @@ const styles = StyleSheet.create({
   message: {
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
+    borderWidth: control.strokeWidth,
     borderRadius: radius.full,
   },
   successMessage: {
+    borderColor: colors.successGlow,
     backgroundColor: colors.successSurface,
+    shadowColor: colors.success,
+    shadowOpacity: 0.16,
+    shadowRadius: spacing.md,
+    elevation: spacing.xs,
   },
   errorMessage: {
+    borderColor: colors.errorGlow,
     backgroundColor: colors.errorSurface,
+    shadowColor: colors.error,
+    shadowOpacity: 0.16,
+    shadowRadius: spacing.md,
+    elevation: spacing.xs,
   },
   messageText: {
     ...typography.caption,

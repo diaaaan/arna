@@ -1,70 +1,200 @@
+const palette = {
+  ink: '#09090B',
+  inkSoft: '#0D0C12',
+  graphite: '#131219',
+  graphiteRaised: '#1A1822',
+  graphiteSoft: '#23202D',
+  cloud: '#F3F0FA',
+  mist: '#9C97AA',
+  violet: '#8F7CFF',
+  violetBright: '#B4A7FF',
+  blue: '#4C8DFF',
+  teal: '#2AAFA5',
+  cyan: '#67D4E3',
+  green: '#72D69A',
+  red: '#FF8D91',
+  transparent: 'rgba(9, 9, 11, 0)',
+} as const;
+
 export const spacing = {
+  xxs: 2,
   xs: 4,
   sm: 8,
   md: 12,
   lg: 16,
   xl: 24,
+  xxl: 32,
+  xxxl: 48,
 } as const;
 
 export const colors = {
-  background: '#F6F6F3',
-  surface: '#FFFFFF',
-  textPrimary: '#171716',
-  textSecondary: '#6F6F6A',
-  border: '#E3E3DE',
-  accent: '#292927',
-  accentDisabled: '#C9C9C3',
-  onAccent: '#FFFFFF',
-  success: '#356B48',
-  successSurface: '#E4F0E7',
-  error: '#A33A32',
-  errorSurface: '#F6E5E2',
-  navigationBackground: '#FBFBF8',
-  navigationActive: '#E9E9E3',
+  background: palette.ink,
+  surface: palette.graphite,
+  surfaceElevated: palette.graphiteRaised,
+  textPrimary: palette.cloud,
+  textSecondary: palette.mist,
+  glowPrimary: palette.violet,
+  glowSecondary: palette.blue,
+  glowTertiary: palette.teal,
+  glowCyan: palette.cyan,
+  success: palette.green,
+  successGlow: 'rgba(114, 214, 154, 0.28)',
+  successSurface: '#122019',
+  error: palette.red,
+  errorGlow: 'rgba(255, 141, 145, 0.28)',
+  errorSurface: '#241416',
+  divider: '#292632',
+  focus: palette.violetBright,
+  focusMuted: 'rgba(143, 124, 255, 0.22)',
+  inputSurface: '#101016',
+  textOnGlow: palette.ink,
+  navigation: {
+    background: 'rgba(19, 18, 25, 0.96)',
+    active: '#2B263B',
+    inactive: palette.mist,
+  },
+  chips: {
+    background: palette.graphite,
+    active: '#2B263B',
+    border: '#302C3B',
+  },
+
+  // Compatibility aliases for existing screens while the visual system rolls out.
+  border: '#292632',
+  accent: palette.violet,
+  accentDisabled: palette.graphiteSoft,
+  onAccent: palette.ink,
+  navigationBackground: 'rgba(19, 18, 25, 0.96)',
+  navigationActive: '#2B263B',
+} as const;
+
+export const gradients = {
+  inputIdle: ['rgba(89, 81, 112, 0.34)', 'rgba(48, 44, 59, 0.20)'] as const,
+  inputFocus: ['rgba(180, 167, 255, 0.68)', 'rgba(76, 141, 255, 0.38)'] as const,
 } as const;
 
 export const typography = {
   appName: {
-    fontSize: 15,
+    fontSize: 14,
     lineHeight: 20,
     fontWeight: '600',
-    letterSpacing: 0.4,
+    letterSpacing: 1.2,
   },
   title: {
-    fontSize: 38,
-    lineHeight: 46,
+    fontSize: 42,
+    lineHeight: 49,
     fontWeight: '500',
-    letterSpacing: -0.6,
+    letterSpacing: -1.1,
   },
   sectionTitle: {
-    fontSize: 28,
-    lineHeight: 34,
+    fontSize: 30,
+    lineHeight: 36,
     fontWeight: '600',
+    letterSpacing: -0.5,
   },
   body: {
     fontSize: 16,
-    lineHeight: 22,
+    lineHeight: 23,
+    fontWeight: '400',
+  },
+  input: {
+    fontSize: 18,
+    lineHeight: 26,
+    fontWeight: '400',
   },
   caption: {
     fontSize: 12,
-    lineHeight: 16,
+    lineHeight: 17,
+    fontWeight: '500',
+    letterSpacing: 0.15,
   },
   button: {
     fontSize: 15,
     lineHeight: 20,
     fontWeight: '600',
+    letterSpacing: 0.1,
   },
   navigationLabel: {
     fontSize: 13,
     lineHeight: 18,
-    fontWeight: '500',
+    fontWeight: '600',
   },
 } as const;
 
 export const radius = {
+  xs: 8,
+  sm: 12,
   md: 16,
-  lg: 20,
+  lg: 24,
+  xl: 32,
   full: 999,
+} as const;
+
+export const motion = {
+  duration: {
+    fast: 180,
+    normal: 320,
+    slow: 700,
+    breathing: 9000,
+    feedbackVisible: 1700,
+  },
+  easing: {
+    standard: [0.2, 0, 0, 1] as const,
+    gentle: [0.22, 1, 0.36, 1] as const,
+    breathing: [0.37, 0, 0.63, 1] as const,
+  },
+} as const;
+
+export const LIVING_LIGHT_MOTION_PRESET = 'expressiveColor' as const;
+
+export const livingLightMotionPresets = {
+  expressiveColor: {
+    cycleDuration: 16000,
+    reducedMotionPhase: 0.31,
+    breathCycles: 2,
+    baseIntensity: 0.96,
+    intensityRange: [0.92, 1.15] as const,
+    spreadRange: [0.9, 1.1] as const,
+    warpRange: [0.94, 1.16] as const,
+    warpAmplitude: [0.0384, 0.0168] as const,
+    centerExpansionRange: [0.96, 1.06] as const,
+    driftAmplitude: [0.3, 0.22] as const,
+    paletteStrength: 1.18,
+    coolColorStrength: 0.7,
+    warmColorStrength: 0.3,
+    colorMorphAmount: 0.88,
+    maxStrength: 0.9,
+    center1: [0.2, 0.24] as const,
+    center2: [0.78, 0.46] as const,
+    center3: [0.42, 0.82] as const,
+  },
+} as const;
+
+export const control = {
+  strokeWidth: 1,
+  inputMinHeight: spacing.xxxl * 3,
+  inputMaxHeight: spacing.xxxl * 4.5,
+  buttonMinHeight: spacing.xxxl,
+} as const;
+
+export const visual = {
+  opacity: {
+    disabled: 0.46,
+    pressed: 0.78,
+  },
+  livingLight: {
+    background: [0.035, 0.035, 0.043] as const,
+    violet: [0.55, 0.3, 0.92] as const,
+    indigo: [0.28, 0.26, 0.78] as const,
+    cobalt: [0.1, 0.38, 0.88] as const,
+    cyan: [0.08, 0.68, 0.78] as const,
+    teal: [0.06, 0.58, 0.55] as const,
+    magenta: [0.72, 0.22, 0.62] as const,
+    coral: [0.88, 0.38, 0.34] as const,
+    softAmber: [0.88, 0.62, 0.24] as const,
+    mutedRose: [0.72, 0.34, 0.48] as const,
+    emerald: [0.08, 0.55, 0.36] as const,
+  },
 } as const;
 
 export const navigation = {
@@ -76,13 +206,23 @@ export const navigation = {
 
 export const shadows = {
   floatingTabBar: {
-    shadowColor: colors.textPrimary,
+    shadowColor: colors.glowPrimary,
     shadowOffset: {
       width: 0,
       height: spacing.xs,
     },
-    shadowOpacity: 0.1,
-    shadowRadius: spacing.md,
+    shadowOpacity: 0.14,
+    shadowRadius: spacing.lg,
     elevation: spacing.sm,
+  },
+  focusGlow: {
+    shadowColor: colors.focus,
+    shadowOffset: {
+      width: 0,
+      height: 0,
+    },
+    shadowOpacity: 0.14,
+    shadowRadius: spacing.md,
+    elevation: spacing.xxs,
   },
 } as const;
