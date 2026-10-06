@@ -137,7 +137,11 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
   },
   inputFrameDecoration: {
-    ...StyleSheet.absoluteFillObject,
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
     borderRadius: radius.lg,
   },
   inputFrameFocused: {

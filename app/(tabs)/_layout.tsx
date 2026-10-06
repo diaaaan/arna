@@ -1,5 +1,7 @@
+import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
-import { StyleSheet } from 'react-native';
+import type { ComponentProps } from 'react';
+import { StyleSheet, type ColorValue } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
@@ -9,6 +11,22 @@ import {
   shadows,
   typography,
 } from '../../src/theme/tokens';
+
+type IconName = ComponentProps<typeof Ionicons>['name'];
+
+function tabIcon(active: IconName, inactive: IconName) {
+  return function TabIcon({
+    color,
+    focused,
+    size,
+  }: {
+    color: ColorValue;
+    focused: boolean;
+    size: number;
+  }) {
+    return <Ionicons name={focused ? active : inactive} size={size} color={color} />;
+  };
+}
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
@@ -31,9 +49,27 @@ export default function TabLayout() {
         ],
       }}
     >
-      <Tabs.Screen name="index" options={{ title: 'Записать' }} />
-      <Tabs.Screen name="collections" options={{ title: 'Коллекции' }} />
-      <Tabs.Screen name="thoughts" options={{ href: null }} />
+      <Tabs.Screen
+        name="index"
+        options={{
+          title: 'Записать',
+          tabBarIcon: tabIcon('create', 'create-outline'),
+        }}
+      />
+      <Tabs.Screen
+        name="thoughts"
+        options={{
+          title: 'Мысли',
+          tabBarIcon: tabIcon('bulb', 'bulb-outline'),
+        }}
+      />
+      <Tabs.Screen
+        name="collections"
+        options={{
+          title: 'Коллекции',
+          tabBarIcon: tabIcon('albums', 'albums-outline'),
+        }}
+      />
     </Tabs>
   );
 }
