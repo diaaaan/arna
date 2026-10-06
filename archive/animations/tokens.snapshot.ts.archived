@@ -147,44 +147,71 @@ export const motion = {
 
 export const LIVING_SURFACE_PRESET = 'livingFlowField' as const;
 
-// The background is the "smear" shader (see living-surface-smear.ts). Older
-// variants live in archive/animations. The palette can be switched at runtime
-// by tapping the "Arna" title three times on the capture screen.
-export type SmearModeName = 'base' | 'lava';
-export const SMEAR_MODE_DEFAULT: SmearModeName = 'lava';
-export const smearModes: Record<SmearModeName, { label: string; value: number }> = {
-  base: { label: 'Сумерки', value: 0 },
-  lava: { label: 'Лава', value: 1 },
+// Which background generator is active by default. It can be switched at
+// runtime by tapping the "Arna" title three times on the capture screen.
+export type LivingSurfaceVariant = 'flowField' | 'warpLiquid' | 'gel' | 'smear';
+export const LIVING_SURFACE_VARIANT: LivingSurfaceVariant = 'warpLiquid';
+export const LIVING_SURFACE_VARIANT_LABELS: Record<
+  LivingSurfaceVariant,
+  string
+> = {
+  flowField: 'A: поток',
+  warpLiquid: 'B: жидкость',
+  gel: 'C: гель',
+  smear: 'D: мазок',
 };
 
-export const smearPreset = {
-  motionDuration: 40000,
-  // Independent slow clock for the lava masses (non-commensurate period).
-  lavaDuration: 97000,
-  noiseScale: 4.6,
-  warpStrength: 2.0,
-  orbitRadius: [1.1, 0.8] as const,
-  cycleAmount: 1,
+// Tunable parameters for the warpLiquid variant (applied as shader uniforms).
+export const warpLiquidPreset = {
+  motionDuration: 45000,
+  noiseScale: 3.4,
+  warpStrength: 2.2,
+  orbitRadius: [0.8, 0.6] as const,
+  bumpStrength: 0.26,
+  specularPower: 42,
   reducedMotionPhase: 0.3,
 } as const;
 
-// The "dusk" palette: mostly deep blue and violet, pink and apricot only as
-// a few bright spots. Other palettes: archive/animations.
-export const smearStyle = {
-  stops: [
-      [0.03, 0.05, 0.22],
-      [0.10, 0.12, 0.50],
-      [0.16, 0.28, 0.72],
-      [0.30, 0.22, 0.74],
-      [0.46, 0.26, 0.84],
-      [0.70, 0.30, 0.82],
-      [1.00, 0.42, 0.66],
-      [1.00, 0.84, 0.36],
-  ],
-  glowAmount: 0.34,
-  grainAmount: 0.055,
-  textureAmount: 0.05,
-  tonePower: 2.5,
+// Tunable parameters for the gel variant (variant C).
+export const gelPreset = {
+  motionDuration: 60000,
+  // Dark base first, then masses: indigo, cobalt, violet, teal, rose, amber.
+  palette: [
+    [0.20, 0.17, 0.62],
+    [0.08, 0.34, 0.86],
+    [0.50, 0.30, 0.80],
+    [0.06, 0.46, 0.56],
+    [0.86, 0.36, 0.50],
+    [0.92, 0.58, 0.30],
+  ] as const,
+  highlight: [0.78, 0.86, 1.0] as const,
+  blobSize: 0.20,
+  stretch: 1.0,
+  bumpStrength: 0.55,
+  grainAmount: 0.045,
+  reducedMotionPhase: 0.3,
+} as const;
+
+// Tunable parameters for the smear variant (variant D).
+export const smearPreset = {
+  motionDuration: 40000,
+  // Ramp from dark to bright: navy, indigo, cobalt, violet, rose, amber.
+  palette: [
+    [0.05, 0.08, 0.27],
+    [0.18, 0.17, 0.58],
+    [0.08, 0.34, 0.84],
+    [0.52, 0.30, 0.80],
+    [0.86, 0.36, 0.52],
+    [0.90, 0.54, 0.28],
+  ] as const,
+  noiseScale: 4.6,
+  warpStrength: 2.0,
+  orbitRadius: [1.1, 0.8] as const,
+  grainAmount: 0.06,
+  glowAmount: 0.30,
+  cycleAmount: 1,
+  textureAmount: 0.06,
+  reducedMotionPhase: 0.3,
 } as const;
 
 export const livingSurfacePresets = {

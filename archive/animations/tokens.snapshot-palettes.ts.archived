@@ -150,17 +150,11 @@ export const LIVING_SURFACE_PRESET = 'livingFlowField' as const;
 // The background is the "smear" shader (see living-surface-smear.ts). Older
 // variants live in archive/animations. The palette can be switched at runtime
 // by tapping the "Arna" title three times on the capture screen.
-export type SmearModeName = 'base' | 'lava';
-export const SMEAR_MODE_DEFAULT: SmearModeName = 'lava';
-export const smearModes: Record<SmearModeName, { label: string; value: number }> = {
-  base: { label: 'Сумерки', value: 0 },
-  lava: { label: 'Лава', value: 1 },
-};
+export type SmearPaletteName = 'classic' | 'neon' | 'pastel' | 'dusk';
+export const SMEAR_PALETTE_DEFAULT: SmearPaletteName = 'classic';
 
 export const smearPreset = {
   motionDuration: 40000,
-  // Independent slow clock for the lava masses (non-commensurate period).
-  lavaDuration: 97000,
   noiseScale: 4.6,
   warpStrength: 2.0,
   orbitRadius: [1.1, 0.8] as const,
@@ -168,10 +162,70 @@ export const smearPreset = {
   reducedMotionPhase: 0.3,
 } as const;
 
-// The "dusk" palette: mostly deep blue and violet, pink and apricot only as
-// a few bright spots. Other palettes: archive/animations.
-export const smearStyle = {
-  stops: [
+// Each palette is a ramp from dark to bright (6 stops) plus its own glow,
+// grain and texture strength.
+export const smearPalettes = {
+  classic: {
+    label: 'Классика',
+    stops: [
+      [0.05, 0.08, 0.27],
+      [0.18, 0.17, 0.58],
+      [0.08, 0.34, 0.84],
+      [0.10, 0.62, 0.78],
+      [0.52, 0.30, 0.80],
+      [0.80, 0.28, 0.66],
+      [0.90, 0.44, 0.50],
+      [0.92, 0.62, 0.30],
+    ],
+    glowAmount: 0.20,
+    grainAmount: 0.06,
+    textureAmount: 0.06,
+    tonePower: 1.0,
+    rayAmount: 0.22,
+  },
+  // Electric and saturated: ink, electric blue, cyan, violet, magenta, hot
+  // pink, orange, amber.
+  neon: {
+    label: 'Неон',
+    stops: [
+      [0.02, 0.03, 0.20],
+      [0.10, 0.22, 1.00],
+      [0.00, 0.80, 0.95],
+      [0.58, 0.16, 1.00],
+      [1.00, 0.16, 0.70],
+      [1.00, 0.30, 0.34],
+      [1.00, 0.60, 0.15],
+      [1.00, 0.78, 0.25],
+    ],
+    glowAmount: 0.24,
+    grainAmount: 0.05,
+    textureAmount: 0.05,
+    tonePower: 1.0,
+    rayAmount: 0.30,
+  },
+  // Soft and gentle, mid-toned so white text stays readable.
+  pastel: {
+    label: 'Пастель',
+    stops: [
+      [0.22, 0.24, 0.56],
+      [0.42, 0.48, 0.88],
+      [0.50, 0.70, 0.92],
+      [0.66, 0.56, 0.90],
+      [0.86, 0.58, 0.80],
+      [0.96, 0.70, 0.70],
+      [0.98, 0.78, 0.66],
+      [0.98, 0.84, 0.70],
+    ],
+    glowAmount: 0.16,
+    grainAmount: 0.05,
+    textureAmount: 0.04,
+    tonePower: 1.0,
+    rayAmount: 0.14,
+  },
+  // Mostly deep blue and violet; pink and apricot only as a few bright spots.
+  dusk: {
+    label: 'Сумерки',
+    stops: [
       [0.03, 0.05, 0.22],
       [0.10, 0.12, 0.50],
       [0.16, 0.28, 0.72],
@@ -179,12 +233,14 @@ export const smearStyle = {
       [0.46, 0.26, 0.84],
       [0.70, 0.30, 0.82],
       [1.00, 0.42, 0.66],
-      [1.00, 0.84, 0.36],
-  ],
-  glowAmount: 0.34,
-  grainAmount: 0.055,
-  textureAmount: 0.05,
-  tonePower: 2.5,
+      [1.00, 0.70, 0.45],
+    ],
+    glowAmount: 0.34,
+    grainAmount: 0.055,
+    textureAmount: 0.05,
+    tonePower: 2.0,
+    rayAmount: 0.28,
+  },
 } as const;
 
 export const livingSurfacePresets = {

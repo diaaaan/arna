@@ -1,0 +1,1193 @@
+import { useEffect } from 'react';
+import { Dimensions, StyleSheet } from 'react-native';
+import {
+  Canvas,
+  Fill,
+  Rect,
+  Shader,
+  Skia,
+  vec,
+} from '@shopify/react-native-skia';
+import type { Uniforms } from '@shopify/react-native-skia';
+import {
+  cancelAnimation,
+  Easing,
+  useDerivedValue,
+  useReducedMotion,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+} from 'react-native-reanimated';
+
+import {
+  colors,
+  LIVING_SURFACE_PRESET,
+  LIVING_SURFACE_VARIANT,
+  livingSurfacePresets,
+  visual,
+  warpLiquidPreset,
+  gelPreset,
+  smearPreset,
+  type LivingSurfaceVariant,
+} from '../theme/tokens';
+import { WARP_LIQUID_SOURCE } from './living-surface-warp';
+import { GEL_SOURCE } from './living-surface-gel';
+import { SMEAR_SOURCE } from './living-surface-smear';
+
+const SCREEN_SIZE = Dimensions.get('screen');
+const RESOLUTION = vec(SCREEN_SIZE.width, SCREEN_SIZE.height);
+const ACTIVE_PRESET = livingSurfacePresets[LIVING_SURFACE_PRESET];
+const DEBUG_VIEW = 'NORMAL' as
+  | 'NORMAL'
+  | 'RAW_RELIEF'
+  | 'ADVECTED_COORDINATES'
+  | 'CURVATURE_VIEW';
+const CURVATURE_VIEW = 'SIGNED_DELTA' as
+  | 'SIGNED_DELTA'
+  | 'ABS_DELTA'
+  | 'SCALED_UNCLAMPED'
+  | 'CLAMPED'
+  | 'CLAMP_MASK';
+const CURVATURE_VIEW_OUTPUT = {
+  SIGNED_DELTA:
+    '0.5 + 0.5 * clamp(debugSignedScaled / max(curvatureClamp, 0.001), -1.0, 1.0)',
+  ABS_DELTA:
+    'clamp(debugAbsDelta / max(debugClampDelta, 0.000001), 0.0, 1.0)',
+  SCALED_UNCLAMPED:
+    'debugScaledCurvature / (debugScaledCurvature + curvatureClamp)',
+  CLAMPED: 'debugClampedCurvature / max(curvatureClamp, 0.001)',
+  CLAMP_MASK: 'step(curvatureClamp, debugScaledCurvature)',
+} as const;
+const CURVATURE_DEBUG_EXPRESSION = CURVATURE_VIEW_OUTPUT[CURVATURE_VIEW];
+const RAW_RELIEF_COMPONENT = 'FULL' as
+  | 'FULL'
+  | 'BASE'
+  | 'MIXED'
+  | 'LOCAL_EVENTS'
+  | 'TOPOLOGY_BREAKER';
+const RAW_RELIEF_COMPONENT_OUTPUT = {
+  FULL: 'debugComponents.full',
+  BASE: 'debugComponents.base',
+  MIXED: 'debugComponents.mixed',
+  LOCAL_EVENTS: 'debugComponents.localEvents',
+  TOPOLOGY_BREAKER: 'debugComponents.topologyBreaker',
+} as const;
+const RAW_RELIEF_DEBUG_EXPRESSION =
+  RAW_RELIEF_COMPONENT_OUTPUT[RAW_RELIEF_COMPONENT];
+const DEBUG_SHADER_OUTPUT =
+  DEBUG_VIEW === 'ADVECTED_COORDINATES'
+    ? `
+  AdvectedState debugAdvected = advectedState(
+    uv,
+    motionAngle,
+    compositionAngle
+  );
+  float2 debugGridCoordinates = debugAdvected.point * 8.0;
+  float2 debugGridDistance = abs(
+    fract(debugGridCoordinates + 0.5) - 0.5
+  );
+  float debugGridX = 1.0 - smoothstep(
+    0.015,
+    0.045,
+    debugGridDistance.x
+  );
+  float debugGridY = 1.0 - smoothstep(
+    0.015,
+    0.045,
+    debugGridDistance.y
+  );
+  float debugGrid = max(debugGridX * 0.82, debugGridY * 0.64);
+  float debugGray = 0.05 + debugGrid * 0.82;
+  return half4(debugGray, debugGray, debugGray, 1.0);
+`
+    : DEBUG_VIEW === 'CURVATURE_VIEW'
+    ? `
+  FieldState debugState = livingField(uv, motionAngle, compositionAngle);
+  float debugField = debugState.relief;
+  float2 debugCurvatureOffset = lightDirection * curvatureSampleOffset;
+  float debugForwardField = sampleRelief(
+    uv + debugCurvatureOffset,
+    motionAngle,
+    compositionAngle
+  );
+  float debugBackwardField = sampleRelief(
+    uv - debugCurvatureOffset,
+    motionAngle,
+    compositionAngle
+  );
+  float debugSignedDelta =
+    debugForwardField + debugBackwardField - debugField * 2.0;
+  float debugAbsDelta = abs(debugSignedDelta);
+  float debugCurvatureDenominator = max(
+    curvatureSampleOffset * curvatureSampleOffset,
+    0.000001
+  );
+  float debugSignedScaled =
+    debugSignedDelta / debugCurvatureDenominator * curvatureStrength;
+  float debugScaledCurvature =
+    debugAbsDelta / debugCurvatureDenominator * curvatureStrength;
+  float debugClampedCurvature = clamp(
+    debugScaledCurvature,
+    0.0,
+    curvatureClamp
+  );
+  float debugClampDelta =
+    curvatureClamp * debugCurvatureDenominator /
+    max(curvatureStrength, 0.001);
+  float debugGray = ${CURVATURE_DEBUG_EXPRESSION};
+  return half4(debugGray, debugGray, debugGray, 1.0);
+`
+    : DEBUG_VIEW === 'RAW_RELIEF'
+    ? `
+  AdvectedState debugAdvected = advectedState(
+    uv,
+    motionAngle,
+    compositionAngle
+  );
+  float4 debugTopology = directionalTopology(
+    reliefPhases(debugAdvected.point, motionAngle, compositionAngle),
+    debugAdvected,
+    compositionAngle
+  );
+  RawReliefComponents debugComponents = rawReliefComponents(
+    debugTopology.xyz,
+    debugAdvected.energy,
+    compositionAngle,
+    debugTopology.w
+  );
+  float debugRawRelief = ${RAW_RELIEF_DEBUG_EXPRESSION};
+  float debugGray = clamp(debugRawRelief * 0.42 + 0.5, 0.0, 1.0);
+  return half4(debugGray, debugGray, debugGray, 1.0);
+`
+    : '';
+
+const LIVING_SURFACE_SHADER_SOURCE = `
+uniform float2 resolution;
+uniform float motionPhase;
+uniform float compositionPhase;
+uniform float3 backgroundColor;
+uniform float3 deepNavy;
+uniform float3 indigo;
+uniform float3 cobalt;
+uniform float3 violet;
+uniform float3 cyan;
+uniform float3 teal;
+uniform float3 lavender;
+uniform float3 paleCyan;
+uniform float3 lavenderWhite;
+uniform float3 neutralWhite;
+uniform float3 paleYellow;
+uniform float3 neonYellowGreen;
+uniform float3 mutedPeach;
+uniform float3 coral;
+uniform float3 rose;
+uniform float2 verticalActivityZone;
+uniform float verticalMaskSoftness;
+uniform float2 flowScale;
+uniform float2 flowDirectionA;
+uniform float2 flowDirectionB;
+uniform float2 flowDirectionC;
+uniform float3 flowPhaseOffsets;
+uniform float3 flowEnergyBase;
+uniform float flowEnergyVariation;
+uniform float flowCurlStrength;
+uniform float flowAdvection;
+uniform float flowSecondaryAdvection;
+uniform float2 reliefScale;
+uniform float2 reliefDirectionA;
+uniform float2 reliefDirectionB;
+uniform float2 reliefDirectionC;
+uniform float3 reliefFrequencies;
+uniform float3 reliefStrengths;
+uniform float3 reliefPhaseOffsets;
+uniform float reliefCrossCoupling;
+uniform float3 reliefEvolutionHarmonics;
+uniform float energyRedistributionStrength;
+uniform float reliefSoftSaturation;
+uniform float negativeReliefKnee;
+uniform float negativeReliefCompression;
+uniform float shadowPenumbra;
+uniform float shadowPermeability;
+uniform float localDisturbanceStrength;
+uniform float2 localDisturbancePhaseOffsets;
+uniform float2 localDisturbanceHarmonics;
+uniform float anisotropicPhaseSkew;
+uniform float flowTangentStretch;
+uniform float flowNormalDecorrelation;
+uniform float contourBreakerStrength;
+uniform float2 contourBreakerScale;
+uniform float contourBreakerPhaseOffset;
+uniform float contourBreakerLightingAttenuation;
+uniform float parallelContourSuppression;
+uniform float parallelContourOffsetVariation;
+uniform float rippleStrength;
+uniform float rippleSpeed;
+uniform float frontWidthVariation;
+uniform float visibilityVariation;
+uniform float bandSeparation;
+uniform float foldAlignmentStrength;
+uniform float distributedVisibilityVariation;
+uniform float minimumFoldWidth;
+uniform float tipSoftness;
+uniform float tipContrastAttenuation;
+uniform float curvatureClamp;
+uniform float darkFoldContinuity;
+uniform float foldStrength;
+uniform float2 foldSoftness;
+uniform float curvatureSampleOffset;
+uniform float curvatureStrength;
+uniform float surfaceFlowStrength;
+uniform float baseBodyLuminance;
+uniform float midtoneStrength;
+uniform float highlightStrength;
+uniform float ridgeWidth;
+uniform float ridgeCoreWidth;
+uniform float rimStrength;
+uniform float rimBreakup;
+uniform float rippleBandStrength;
+uniform float2 contourSoftness;
+uniform float2 lightDirection;
+uniform float cyanHighlightStrength;
+uniform float whiteHighlightStrength;
+uniform float yellowAccentStrength;
+uniform float accentAreaLimit;
+uniform float surfaceSaturation;
+uniform float warmAccentStrength;
+uniform float lowerScreenAttenuation;
+
+float wave(float angle, float harmonic, float offset) {
+  return 0.5 + 0.5 * sin(angle * harmonic + offset);
+}
+
+float verticalActivity(float y) {
+  float upperRise = smoothstep(
+    verticalActivityZone.x - verticalMaskSoftness,
+    verticalActivityZone.x + verticalMaskSoftness,
+    y
+  );
+  float lowerFall = 1.0 - smoothstep(
+    verticalActivityZone.y - verticalMaskSoftness,
+    verticalActivityZone.y + verticalMaskSoftness,
+    y
+  );
+  return clamp(upperRise * lowerFall, 0.0, 1.0);
+}
+
+float materialField(float2 point) {
+  float carrier = sin(point.y + sin(point.x) * 0.54);
+  float diagonal = cos(point.x + point.y + sin(point.y) * 0.32);
+  return carrier * 0.72 + diagonal * 0.28;
+}
+
+float3 surfacePalette(float value, float mood) {
+  float3 shadowColor = mix(deepNavy, indigo, 0.58 + mood * 0.16);
+  float3 bodyColor = mix(cobalt, violet, 0.22 + mood * 0.18);
+  bodyColor = mix(bodyColor, lavender, mood * 0.12);
+  float3 highlightColor = mix(cyan, teal, 0.18 + mood * 0.2);
+  float3 color = mix(
+    shadowColor,
+    bodyColor,
+    smoothstep(0.16, 0.62, value)
+  );
+  return mix(color, highlightColor, smoothstep(0.62, 0.96, value));
+}
+
+float3 flowEnergy(float compositionAngle) {
+  float3 modulation = float3(
+    sin(compositionAngle + flowPhaseOffsets.x),
+    sin(compositionAngle * 2.0 + flowPhaseOffsets.y),
+    sin(compositionAngle * 3.0 + flowPhaseOffsets.z)
+  );
+  float3 energy = max(
+    flowEnergyBase * (1.0 + modulation * flowEnergyVariation),
+    float3(0.02)
+  );
+  return energy / max(energy.x + energy.y + energy.z, 0.001);
+}
+
+float2 curlFlow(
+  float2 point,
+  float motionAngle,
+  float compositionAngle,
+  float3 energy
+) {
+  float2 scaledPoint = point * flowScale;
+  float phaseA = dot(scaledPoint, flowDirectionA) +
+    motionAngle * rippleSpeed + flowPhaseOffsets.x +
+    sin(compositionAngle * 2.0 + flowPhaseOffsets.z) *
+      energyRedistributionStrength;
+  float phaseB = dot(scaledPoint, flowDirectionB) -
+    motionAngle * 2.0 * rippleSpeed + flowPhaseOffsets.y +
+    sin(compositionAngle * 3.0 + flowPhaseOffsets.x) *
+      energyRedistributionStrength;
+  float phaseC = dot(scaledPoint, flowDirectionC) +
+    motionAngle * 3.0 * rippleSpeed + flowPhaseOffsets.z +
+    sin(compositionAngle + flowPhaseOffsets.y) *
+      energyRedistributionStrength;
+  float2 curlA = float2(
+    flowDirectionA.y * flowScale.y,
+    -flowDirectionA.x * flowScale.x
+  ) * cos(phaseA);
+  float2 curlB = float2(
+    flowDirectionB.y * flowScale.y,
+    -flowDirectionB.x * flowScale.x
+  ) * cos(phaseB);
+  float2 curlC = float2(
+    flowDirectionC.y * flowScale.y,
+    -flowDirectionC.x * flowScale.x
+  ) * cos(phaseC);
+  return (curlA * energy.x + curlB * energy.y + curlC * energy.z) *
+    flowCurlStrength;
+}
+
+struct AdvectedState {
+  float2 point;
+  float2 flow;
+  float3 energy;
+};
+
+AdvectedState advectedState(
+  float2 uv,
+  float motionAngle,
+  float compositionAngle
+) {
+  float aspect = resolution.x / resolution.y;
+  float2 point = float2((uv.x - 0.5) * aspect, uv.y - 0.38);
+  float3 energy = flowEnergy(compositionAngle);
+  float2 firstFlow = curlFlow(
+    point,
+    motionAngle,
+    compositionAngle,
+    energy
+  );
+  float2 firstPass = point + firstFlow * flowAdvection;
+  float2 secondFlow = curlFlow(
+    firstPass,
+    motionAngle + 1.0471975512,
+    compositionAngle + 2.0943951024,
+    energy
+  );
+  AdvectedState state;
+  state.point = firstPass +
+    secondFlow * flowAdvection * flowSecondaryAdvection;
+  state.flow = mix(firstFlow, secondFlow, flowSecondaryAdvection);
+  state.energy = energy;
+  return state;
+}
+
+float3 reliefPhases(
+  float2 advectedPoint,
+  float motionAngle,
+  float compositionAngle
+) {
+  float2 reliefPoint = advectedPoint * reliefScale;
+  float phaseA = dot(reliefPoint, reliefDirectionA) *
+      reliefFrequencies.x +
+    motionAngle * reliefEvolutionHarmonics.x +
+    reliefPhaseOffsets.x;
+  float phaseB = dot(reliefPoint, reliefDirectionB) *
+      reliefFrequencies.y -
+    motionAngle * reliefEvolutionHarmonics.y +
+    reliefPhaseOffsets.y;
+  float phaseC = dot(reliefPoint, reliefDirectionC) *
+      reliefFrequencies.z +
+    motionAngle * reliefEvolutionHarmonics.z +
+    reliefPhaseOffsets.z;
+
+  // Diagnostic experiment: keep base phases independent while preserving
+  // reliefCrossCoupling for the mixed relief term in reliefValue.
+  // phaseA += sin(phaseB * 0.43 - compositionAngle) *
+  //   reliefCrossCoupling;
+  // phaseB += sin(phaseC * 0.37 + compositionAngle * 2.0) *
+  //   reliefCrossCoupling;
+  // phaseC += sin(phaseA * 0.31 - compositionAngle * 3.0) *
+  //   reliefCrossCoupling * 0.72;
+  return float3(phaseA, phaseB, phaseC);
+}
+
+float4 directionalTopology(
+  float3 phases,
+  AdvectedState advected,
+  float compositionAngle
+) {
+  float flowLength = max(length(advected.flow), 0.001);
+  float2 tangent = advected.flow / flowLength;
+  float2 normal = float2(-tangent.y, tangent.x);
+  float along = dot(advected.point, tangent);
+  float across = dot(advected.point, normal);
+  float normalOffset = sin(
+    across * contourBreakerScale.y -
+    compositionAngle * 3.0 +
+    contourBreakerPhaseOffset
+  ) * flowNormalDecorrelation;
+  float tangentSkew =
+    along * flowTangentStretch + normalOffset;
+  float breakerPhase =
+    (along + normalOffset) * contourBreakerScale.x +
+    across * contourBreakerScale.y * 0.37 +
+    sin(
+      (along - across) * 0.63 - compositionAngle * 3.0
+    ) * 0.28 +
+    compositionAngle * 2.0 +
+    contourBreakerPhaseOffset;
+  float breaker = sin(breakerPhase);
+  float phaseSkew = tangentSkew * anisotropicPhaseSkew +
+    breaker * contourBreakerStrength;
+  phases += float3(
+    phaseSkew,
+    -phaseSkew * 0.61 + normalOffset * 0.52,
+    phaseSkew * 0.37 - normalOffset * 0.34
+  );
+  return float4(phases, breaker);
+}
+
+struct RawReliefComponents {
+  float base;
+  float mixed;
+  float localEvents;
+  float topologyBreaker;
+  float full;
+};
+
+RawReliefComponents rawReliefComponents(
+  float3 phases,
+  float3 energy,
+  float compositionAngle,
+  float topologyBreaker
+) {
+  float3 weightedStrength = reliefStrengths * energy;
+  float strengthTotal = max(
+    weightedStrength.x + weightedStrength.y + weightedStrength.z,
+    0.001
+  );
+  float baseRelief = dot(sin(phases), weightedStrength) / strengthTotal;
+  // Loop closure: for each cross-phase mix below, the total motionAngle
+  // frequency (sum of coefficient * reliefEvolutionHarmonics [1, -2, 3]) must
+  // be an integer, otherwise the animation jumps when motionPhase wraps 1 -> 0.
+  // Totals: mixedRelief 2, localEventA -1, localEventB -2, secondaryRelief -1.
+  float mixedRelief = sin(
+    phases.x * 0.56 - phases.y * 0.42 + phases.z * 0.20
+  ) * reliefCrossCoupling * 0.26;
+
+  float localEnvelopeA = smoothstep(
+    0.18,
+    0.78,
+    0.5 + 0.5 * sin(
+      compositionAngle * localDisturbanceHarmonics.x +
+      localDisturbancePhaseOffsets.x
+    )
+  );
+  float localEnvelopeB = smoothstep(
+    0.22,
+    0.82,
+    0.5 + 0.5 * sin(
+      compositionAngle * localDisturbanceHarmonics.y +
+      localDisturbancePhaseOffsets.y
+    )
+  );
+  float localEventA = sin(
+    phases.x * 0.43 + phases.y * 0.31 - phases.z * 0.27
+  );
+  float localEventB = sin(
+    phases.y * 0.39 - phases.z * 0.46 + phases.x * 0.16
+  );
+  float localNormalization = max(
+    1.0 + localEnvelopeA + localEnvelopeB,
+    1.0
+  );
+  float localEventsRelief = (
+    localEventA * localEnvelopeA +
+    localEventB * localEnvelopeB
+  ) / localNormalization * localDisturbanceStrength;
+  float topologyBreakerRelief =
+    topologyBreaker * contourBreakerStrength;
+
+  RawReliefComponents components;
+  components.base = baseRelief;
+  components.mixed = mixedRelief;
+  components.localEvents = localEventsRelief;
+  components.topologyBreaker = topologyBreakerRelief;
+  components.full = baseRelief;
+  components.full += mixedRelief;
+  components.full += localEventsRelief;
+  components.full += topologyBreakerRelief;
+  return components;
+}
+
+float rawReliefValue(
+  float3 phases,
+  float3 energy,
+  float compositionAngle,
+  float topologyBreaker
+) {
+  RawReliefComponents components = rawReliefComponents(
+    phases,
+    energy,
+    compositionAngle,
+    topologyBreaker
+  );
+  return components.full;
+}
+
+float reliefValue(
+  float3 phases,
+  float3 energy,
+  float compositionAngle,
+  float topologyBreaker
+) {
+  float rawRelief = rawReliefValue(
+    phases,
+    energy,
+    compositionAngle,
+    topologyBreaker
+  );
+  float softlySaturated = rawRelief /
+    (1.0 + reliefSoftSaturation * abs(rawRelief));
+  float negativeDepth = max(
+    -softlySaturated - negativeReliefKnee,
+    0.0
+  );
+  float compressedDepth = negativeDepth /
+    (1.0 + negativeReliefCompression * negativeDepth);
+  float compressedNegative = -(
+    negativeReliefKnee + compressedDepth
+  );
+  float compressionMix = smoothstep(
+    0.0,
+    shadowPenumbra,
+    negativeDepth
+  );
+  return mix(softlySaturated, compressedNegative, compressionMix);
+}
+
+float sampleRelief(
+  float2 uv,
+  float motionAngle,
+  float compositionAngle
+) {
+  AdvectedState advected = advectedState(
+    uv,
+    motionAngle,
+    compositionAngle
+  );
+  float4 topology = directionalTopology(
+    reliefPhases(advected.point, motionAngle, compositionAngle),
+    advected,
+    compositionAngle
+  );
+  return reliefValue(
+    topology.xyz,
+    advected.energy,
+    compositionAngle,
+    topology.w
+  );
+}
+
+struct FieldState {
+  float relief;
+  float secondaryRelief;
+  float material;
+  float topologyBreaker;
+  float2 flow;
+};
+
+FieldState livingField(
+  float2 uv,
+  float motionAngle,
+  float compositionAngle
+) {
+  AdvectedState advected = advectedState(
+    uv,
+    motionAngle,
+    compositionAngle
+  );
+  float4 topology = directionalTopology(
+    reliefPhases(advected.point, motionAngle, compositionAngle),
+    advected,
+    compositionAngle
+  );
+  float3 phases = topology.xyz;
+  float relief = reliefValue(
+    phases,
+    advected.energy,
+    compositionAngle,
+    topology.w
+  );
+
+  float secondaryRelief = sin(
+    phases.x * 0.62 + phases.y * 0.48 - phases.z * 0.22 +
+    bandSeparation
+  );
+  float material = materialField(
+    advected.point * 6.28318530718 +
+    advected.flow * surfaceFlowStrength +
+    compositionAngle * float2(-1.0, 1.0)
+  );
+
+  FieldState state;
+  state.relief = relief;
+  state.secondaryRelief = secondaryRelief;
+  state.material = material;
+  state.topologyBreaker = topology.w;
+  state.flow = advected.flow;
+  return state;
+}
+
+half4 main(float2 position) {
+  float2 uv = position / resolution;
+  float motionAngle = motionPhase * 6.28318530718;
+  float compositionAngle = compositionPhase * 6.28318530718;
+${DEBUG_SHADER_OUTPUT}
+  float activity = verticalActivity(uv.y);
+  float activityLevel = mix(lowerScreenAttenuation, 1.0, activity);
+  FieldState state = livingField(uv, motionAngle, compositionAngle);
+  float field = state.relief;
+  float secondaryField = state.secondaryRelief;
+  float material = state.material;
+  float breakerContinuity = mix(
+    1.0 - contourBreakerLightingAttenuation,
+    1.0,
+    smoothstep(0.16, 0.72, abs(state.topologyBreaker))
+  );
+
+  float surfaceBody = smoothstep(-0.82, 0.78, field) * activity;
+  float primaryArc = 1.0 - smoothstep(
+    foldSoftness.x,
+    foldSoftness.y,
+    abs(field)
+  );
+  primaryArc *= mix(1.0, breakerContinuity, 0.56);
+  float2 curvatureOffset = lightDirection * curvatureSampleOffset;
+  float forwardField = sampleRelief(
+    uv + curvatureOffset,
+    motionAngle,
+    compositionAngle
+  );
+  float backwardField = sampleRelief(
+    uv - curvatureOffset,
+    motionAngle,
+    compositionAngle
+  );
+  float curvatureDenominator = max(
+    curvatureSampleOffset * curvatureSampleOffset,
+    0.000001
+  );
+  float signedCurvature =
+    (forwardField + backwardField - field * 2.0) /
+    curvatureDenominator * curvatureStrength;
+  float curvature = clamp(
+    max(signedCurvature, 0.0),
+    0.0,
+    curvatureClamp
+  );
+
+  float directionalSlope = clamp(
+    (forwardField - backwardField) /
+      max(curvatureSampleOffset * 2.0, 0.000001),
+    -1.0,
+    1.0
+  );
+  float curvatureRisk = smoothstep(
+    max(curvatureClamp - tipSoftness, 0.001),
+    curvatureClamp,
+    curvature
+  );
+  float tipSafety = 1.0 -
+    curvatureRisk * tipContrastAttenuation * 0.18;
+
+  float2 safeFlow = state.flow + float2(0.001, -0.001);
+  float flowLength = max(length(safeFlow), 0.001);
+  float2 surfaceTangent = safeFlow / flowLength;
+  float2 surfaceNormal = float2(
+    -surfaceTangent.y,
+    surfaceTangent.x
+  );
+  float localDirection = dot(surfaceNormal, lightDirection);
+  float widthFactor = clamp(
+    1.0 + frontWidthVariation * (
+      material * 0.48 +
+      localDirection * 0.24 +
+      (curvature - 0.5) * 0.28
+    ),
+    0.68,
+    1.34
+  );
+  float distributedVisibility =
+    (field - secondaryField) *
+    distributedVisibilityVariation * 0.35;
+  float visibilityBase = smoothstep(
+    -0.82,
+    0.82,
+    material + distributedVisibility
+  );
+  float primaryVisibility = mix(
+    1.0 - visibilityVariation,
+    1.0,
+    visibilityBase
+  );
+  float secondaryVisibility = mix(
+    1.0 - visibilityVariation * 0.82,
+    1.0,
+    1.0 - visibilityBase * 0.74
+  );
+
+  float contourInnerA = max(
+    minimumFoldWidth,
+    contourSoftness.x * widthFactor
+  );
+  float contourOuterA = max(
+    contourSoftness.y * widthFactor,
+    contourInnerA + tipSoftness * curvatureRisk
+  );
+  float contourA = 1.0 - smoothstep(
+    contourInnerA,
+    contourOuterA,
+    abs(
+      field - (
+        0.48 +
+        state.topologyBreaker * parallelContourOffsetVariation
+      )
+    )
+  );
+  float secondaryWidth = clamp(2.0 - widthFactor, 0.72, 1.32);
+  float contourInnerB = max(
+    minimumFoldWidth,
+    contourSoftness.x * secondaryWidth
+  );
+  float contourOuterB = max(
+    contourSoftness.y * secondaryWidth,
+    contourInnerB + tipSoftness * curvatureRisk
+  );
+  float contourB = 1.0 - smoothstep(
+    contourInnerB,
+    contourOuterB,
+    abs(secondaryField + 0.42)
+  );
+  contourA *= primaryVisibility * tipSafety *
+    breakerContinuity * activity;
+  contourB *= secondaryVisibility * tipSafety *
+    breakerContinuity * activity;
+
+  float rippleAlignedFold = max(
+    primaryArc,
+    max(contourA * 0.52, contourB * 0.3)
+  );
+  float foldGeometry = mix(
+    primaryArc,
+    rippleAlignedFold,
+    foldAlignmentStrength
+  );
+  float foldSafety = mix(
+    tipSafety,
+    1.0,
+    darkFoldContinuity * 0.5
+  );
+  float fold = foldGeometry * foldStrength * foldSafety * activity;
+
+  float ripple = field * rippleStrength * activityLevel;
+  float deepShadow = smoothstep(
+    negativeReliefKnee,
+    negativeReliefKnee + shadowPenumbra * 2.0,
+    -field
+  );
+  float negativeMaterial = max(-material, 0.0);
+  float permeableMaterial = material /
+    (1.0 + shadowPermeability * deepShadow * negativeMaterial);
+  float relief = 0.3 +
+    surfaceBody * 0.24 +
+    permeableMaterial * 0.16;
+  relief += curvature * midtoneStrength;
+  relief += ripple * 0.12;
+  relief = mix(0.34, clamp(relief, 0.0, 1.0), activityLevel);
+
+  float colorMood = wave(compositionAngle, 1.0, 0.64);
+  float3 fieldColor = surfacePalette(relief, colorMood);
+  float fieldLuminance = dot(
+    fieldColor,
+    float3(0.2126, 0.7152, 0.0722)
+  );
+  fieldColor = mix(
+    float3(fieldLuminance),
+    fieldColor,
+    surfaceSaturation
+  );
+
+  float variableDistance = abs(
+    field + material * rippleStrength * 0.24
+  );
+  float ridge = 1.0 - smoothstep(
+    ridgeWidth * 0.38,
+    ridgeWidth,
+    variableDistance
+  );
+  float ridgeCore = 1.0 - smoothstep(
+    ridgeCoreWidth * 0.32,
+    ridgeCoreWidth,
+    variableDistance
+  );
+  ridge = max(ridge, fold * 0.34);
+  ridgeCore = max(
+    ridgeCore,
+    contourA * foldAlignmentStrength * 0.16 *
+      parallelContourSuppression
+  );
+  ridge *= tipSafety * breakerContinuity * activity;
+  ridgeCore *= tipSafety * breakerContinuity * activity;
+
+  float directionalLight = clamp(
+    dot(surfaceNormal, -lightDirection) * 0.35 +
+      directionalSlope * 0.15 + 0.5,
+    0.0,
+    1.0
+  );
+  float materialBreakup = mix(
+    1.0 - rimBreakup,
+    1.0,
+    clamp(material * 0.5 + 0.5, 0.0, 1.0)
+  );
+  float rim = primaryArc * directionalLight *
+    materialBreakup * rimStrength * activity * tipSafety;
+
+  float warmEnvelope = pow(wave(compositionAngle, 1.0, 4.56), 6.0);
+  float accentSeed = ridgeCore * max(curvature, rim) * warmEnvelope;
+  float accentArea = smoothstep(accentAreaLimit, 1.0, accentSeed);
+  float3 warmColor = mix(
+    mutedPeach,
+    mix(coral, rose, colorMood * 0.34),
+    colorMood * 0.42
+  );
+  fieldColor = mix(
+    fieldColor,
+    warmColor,
+    accentArea * warmAccentStrength
+  );
+
+  float3 luminousColor = fieldColor * (
+    baseBodyLuminance + surfaceBody * midtoneStrength * activity
+  );
+  luminousColor += paleCyan *
+    curvature * cyanHighlightStrength * activity;
+  luminousColor += lavenderWhite *
+    ridge * highlightStrength * 0.46;
+  luminousColor += paleCyan *
+    contourA * rippleBandStrength;
+
+  float contourLuminance = dot(
+    luminousColor,
+    float3(0.2126, 0.7152, 0.0722)
+  );
+  luminousColor = mix(
+    float3(contourLuminance),
+    luminousColor,
+    1.0 + contourB * rippleBandStrength * 0.18
+  );
+  luminousColor += neutralWhite *
+    ridgeCore * whiteHighlightStrength * directionalLight;
+  luminousColor += lavenderWhite *
+    rim * whiteHighlightStrength;
+
+  float3 rareAccent = mix(paleYellow, neonYellowGreen, 0.16);
+  luminousColor += rareAccent * accentArea * yellowAccentStrength;
+
+  float3 finalColor =
+    1.0 - (1.0 - backgroundColor) *
+      (1.0 - clamp(luminousColor * activityLevel, 0.0, 0.94));
+
+  return half4(clamp(finalColor, 0.0, 1.0), 1.0);
+}
+`;
+
+function compileShader(source: string) {
+  try {
+    return Skia.RuntimeEffect.Make(source);
+  } catch {
+    return null;
+  }
+}
+
+const LIVING_SURFACE_EFFECT = compileShader(LIVING_SURFACE_SHADER_SOURCE);
+const WARP_LIQUID_EFFECT = compileShader(WARP_LIQUID_SOURCE);
+const GEL_EFFECT = compileShader(GEL_SOURCE);
+const SMEAR_EFFECT = compileShader(SMEAR_SOURCE);
+
+type AmbientBackgroundProps = {
+  variant?: LivingSurfaceVariant;
+};
+
+export function AmbientBackground({
+  variant = LIVING_SURFACE_VARIANT,
+}: AmbientBackgroundProps) {
+  // Fall back to the flow field if the requested shader failed to compile.
+  const activeVariant: LivingSurfaceVariant =
+    variant === 'smear' && SMEAR_EFFECT
+      ? 'smear'
+      : variant === 'gel' && GEL_EFFECT
+      ? 'gel'
+      : variant === 'warpLiquid' && WARP_LIQUID_EFFECT
+        ? 'warpLiquid'
+        : 'flowField';
+  const isSmear = activeVariant === 'smear';
+  const isGel = activeVariant === 'gel';
+  const isWarp = activeVariant === 'warpLiquid';
+  const motionDuration = isSmear
+    ? smearPreset.motionDuration
+    : isGel
+    ? gelPreset.motionDuration
+    : isWarp
+      ? warpLiquidPreset.motionDuration
+      : ACTIVE_PRESET.motionDuration;
+
+  const motionPhase = useSharedValue<number>(
+    ACTIVE_PRESET.reducedMotionPhase,
+  );
+  const compositionPhase = useSharedValue<number>(
+    ACTIVE_PRESET.reducedCompositionPhase,
+  );
+  const reduceMotion = useReducedMotion();
+
+  useEffect(() => {
+    cancelAnimation(motionPhase);
+    cancelAnimation(compositionPhase);
+
+    if (reduceMotion) {
+      motionPhase.value = isSmear
+        ? smearPreset.reducedMotionPhase
+        : isGel
+        ? gelPreset.reducedMotionPhase
+        : isWarp
+        ? warpLiquidPreset.reducedMotionPhase
+        : ACTIVE_PRESET.reducedMotionPhase;
+      compositionPhase.value = ACTIVE_PRESET.reducedCompositionPhase;
+      return;
+    }
+
+    motionPhase.value = 0;
+    compositionPhase.value = 0;
+    motionPhase.value = withRepeat(
+      withTiming(1, {
+        duration: motionDuration,
+        easing: Easing.linear,
+      }),
+      -1,
+      false,
+    );
+    compositionPhase.value = withRepeat(
+      withTiming(1, {
+        duration: ACTIVE_PRESET.compositionDuration,
+        easing: Easing.linear,
+      }),
+      -1,
+      false,
+    );
+
+    return () => {
+      cancelAnimation(motionPhase);
+      cancelAnimation(compositionPhase);
+    };
+  }, [compositionPhase, isSmear, isGel, isWarp, motionDuration, motionPhase, reduceMotion]);
+
+  const uniforms = useDerivedValue<Uniforms>(() => ({
+    resolution: RESOLUTION,
+    motionPhase: motionPhase.value,
+    compositionPhase: compositionPhase.value,
+    backgroundColor: visual.livingSurface.background,
+    deepNavy: visual.livingSurface.deepNavy,
+    indigo: visual.livingSurface.indigo,
+    cobalt: visual.livingSurface.cobalt,
+    violet: visual.livingSurface.violet,
+    cyan: visual.livingSurface.cyan,
+    teal: visual.livingSurface.teal,
+    lavender: visual.livingSurface.lavender,
+    paleCyan: visual.livingSurface.paleCyan,
+    lavenderWhite: visual.livingSurface.lavenderWhite,
+    neutralWhite: visual.livingSurface.neutralWhite,
+    paleYellow: visual.livingSurface.paleYellow,
+    neonYellowGreen: visual.livingSurface.neonYellowGreen,
+    mutedPeach: visual.livingSurface.mutedPeach,
+    coral: visual.livingSurface.coral,
+    rose: visual.livingSurface.rose,
+    verticalActivityZone: ACTIVE_PRESET.verticalActivityZone,
+    verticalMaskSoftness: ACTIVE_PRESET.verticalMaskSoftness,
+    flowScale: ACTIVE_PRESET.flowScale,
+    flowDirectionA: ACTIVE_PRESET.flowDirections[0],
+    flowDirectionB: ACTIVE_PRESET.flowDirections[1],
+    flowDirectionC: ACTIVE_PRESET.flowDirections[2],
+    flowPhaseOffsets: ACTIVE_PRESET.flowPhaseOffsets,
+    flowEnergyBase: ACTIVE_PRESET.flowEnergyBase,
+    flowEnergyVariation: ACTIVE_PRESET.flowEnergyVariation,
+    flowCurlStrength: ACTIVE_PRESET.flowCurlStrength,
+    flowAdvection: ACTIVE_PRESET.flowAdvection,
+    flowSecondaryAdvection: ACTIVE_PRESET.flowSecondaryAdvection,
+    reliefScale: ACTIVE_PRESET.reliefScale,
+    reliefDirectionA: ACTIVE_PRESET.reliefDirections[0],
+    reliefDirectionB: ACTIVE_PRESET.reliefDirections[1],
+    reliefDirectionC: ACTIVE_PRESET.reliefDirections[2],
+    reliefFrequencies: ACTIVE_PRESET.reliefFrequencies,
+    reliefStrengths: ACTIVE_PRESET.reliefStrengths,
+    reliefPhaseOffsets: ACTIVE_PRESET.reliefPhaseOffsets,
+    reliefCrossCoupling: ACTIVE_PRESET.reliefCrossCoupling,
+    reliefEvolutionHarmonics:
+      ACTIVE_PRESET.reliefEvolutionHarmonics,
+    energyRedistributionStrength:
+      ACTIVE_PRESET.energyRedistributionStrength,
+    reliefSoftSaturation: ACTIVE_PRESET.reliefSoftSaturation,
+    negativeReliefKnee: ACTIVE_PRESET.negativeReliefKnee,
+    negativeReliefCompression:
+      ACTIVE_PRESET.negativeReliefCompression,
+    shadowPenumbra: ACTIVE_PRESET.shadowPenumbra,
+    shadowPermeability: ACTIVE_PRESET.shadowPermeability,
+    localDisturbanceStrength:
+      ACTIVE_PRESET.localDisturbanceStrength,
+    localDisturbancePhaseOffsets:
+      ACTIVE_PRESET.localDisturbancePhaseOffsets,
+    localDisturbanceHarmonics:
+      ACTIVE_PRESET.localDisturbanceHarmonics,
+    anisotropicPhaseSkew: ACTIVE_PRESET.anisotropicPhaseSkew,
+    flowTangentStretch: ACTIVE_PRESET.flowTangentStretch,
+    flowNormalDecorrelation:
+      ACTIVE_PRESET.flowNormalDecorrelation,
+    contourBreakerStrength: ACTIVE_PRESET.contourBreakerStrength,
+    contourBreakerScale: ACTIVE_PRESET.contourBreakerScale,
+    contourBreakerPhaseOffset:
+      ACTIVE_PRESET.contourBreakerPhaseOffset,
+    contourBreakerLightingAttenuation:
+      ACTIVE_PRESET.contourBreakerLightingAttenuation,
+    parallelContourSuppression:
+      ACTIVE_PRESET.parallelContourSuppression,
+    parallelContourOffsetVariation:
+      ACTIVE_PRESET.parallelContourOffsetVariation,
+    rippleStrength: ACTIVE_PRESET.rippleStrength,
+    rippleSpeed: ACTIVE_PRESET.rippleSpeed,
+    frontWidthVariation: ACTIVE_PRESET.frontWidthVariation,
+    visibilityVariation: ACTIVE_PRESET.visibilityVariation,
+    bandSeparation: ACTIVE_PRESET.bandSeparation,
+    foldAlignmentStrength: ACTIVE_PRESET.foldAlignmentStrength,
+    distributedVisibilityVariation:
+      ACTIVE_PRESET.distributedVisibilityVariation,
+    minimumFoldWidth: ACTIVE_PRESET.minimumFoldWidth,
+    tipSoftness: ACTIVE_PRESET.tipSoftness,
+    tipContrastAttenuation: ACTIVE_PRESET.tipContrastAttenuation,
+    curvatureClamp: ACTIVE_PRESET.curvatureClamp,
+    darkFoldContinuity: ACTIVE_PRESET.darkFoldContinuity,
+    foldStrength: ACTIVE_PRESET.foldStrength,
+    foldSoftness: ACTIVE_PRESET.foldSoftness,
+    curvatureSampleOffset: ACTIVE_PRESET.curvatureSampleOffset,
+    curvatureStrength: ACTIVE_PRESET.curvatureStrength,
+    surfaceFlowStrength: ACTIVE_PRESET.surfaceFlowStrength,
+    baseBodyLuminance: ACTIVE_PRESET.baseBodyLuminance,
+    midtoneStrength: ACTIVE_PRESET.midtoneStrength,
+    highlightStrength: ACTIVE_PRESET.highlightStrength,
+    ridgeWidth: ACTIVE_PRESET.ridgeWidth,
+    ridgeCoreWidth: ACTIVE_PRESET.ridgeCoreWidth,
+    rimStrength: ACTIVE_PRESET.rimStrength,
+    rimBreakup: ACTIVE_PRESET.rimBreakup,
+    rippleBandStrength: ACTIVE_PRESET.rippleBandStrength,
+    contourSoftness: ACTIVE_PRESET.contourSoftness,
+    lightDirection: ACTIVE_PRESET.lightDirection,
+    cyanHighlightStrength: ACTIVE_PRESET.cyanHighlightStrength,
+    whiteHighlightStrength: ACTIVE_PRESET.whiteHighlightStrength,
+    yellowAccentStrength: ACTIVE_PRESET.yellowAccentStrength,
+    accentAreaLimit: ACTIVE_PRESET.accentAreaLimit,
+    surfaceSaturation: ACTIVE_PRESET.surfaceSaturation,
+    warmAccentStrength: ACTIVE_PRESET.warmAccentStrength,
+    lowerScreenAttenuation: ACTIVE_PRESET.lowerScreenAttenuation,
+  }));
+
+  const warpUniforms = useDerivedValue<Uniforms>(() => ({
+    resolution: RESOLUTION,
+    motionPhase: motionPhase.value,
+    backgroundColor: visual.livingSurface.background,
+    deepNavy: visual.livingSurface.deepNavy,
+    indigo: visual.livingSurface.indigo,
+    cobalt: visual.livingSurface.cobalt,
+    violet: visual.livingSurface.violet,
+    cyan: visual.livingSurface.cyan,
+    paleCyan: visual.livingSurface.paleCyan,
+    lavenderWhite: visual.livingSurface.lavenderWhite,
+    noiseScale: warpLiquidPreset.noiseScale,
+    warpStrength: warpLiquidPreset.warpStrength,
+    orbitRadius: warpLiquidPreset.orbitRadius,
+    bumpStrength: warpLiquidPreset.bumpStrength,
+    specularPower: warpLiquidPreset.specularPower,
+  }));
+
+  const gelUniforms = useDerivedValue<Uniforms>(() => ({
+    resolution: RESOLUTION,
+    motionPhase: motionPhase.value,
+    backgroundColor: visual.livingSurface.background,
+    c0: gelPreset.palette[0],
+    c1: gelPreset.palette[1],
+    c2: gelPreset.palette[2],
+    c3: gelPreset.palette[3],
+    c4: gelPreset.palette[4],
+    c5: gelPreset.palette[5],
+    highlight: gelPreset.highlight,
+    blobSize: gelPreset.blobSize,
+    stretch: gelPreset.stretch,
+    bumpStrength: gelPreset.bumpStrength,
+    grainAmount: gelPreset.grainAmount,
+  }));
+
+  const smearUniforms = useDerivedValue<Uniforms>(() => ({
+    resolution: RESOLUTION,
+    motionPhase: motionPhase.value,
+    backgroundColor: visual.livingSurface.background,
+    s0: smearPreset.palette[0],
+    s1: smearPreset.palette[1],
+    s2: smearPreset.palette[2],
+    s3: smearPreset.palette[3],
+    s4: smearPreset.palette[4],
+    s5: smearPreset.palette[5],
+    noiseScale: smearPreset.noiseScale,
+    warpStrength: smearPreset.warpStrength,
+    orbitRadius: smearPreset.orbitRadius,
+    grainAmount: smearPreset.grainAmount,
+    glowAmount: smearPreset.glowAmount,
+    cycleAmount: smearPreset.cycleAmount,
+    textureAmount: smearPreset.textureAmount,
+  }));
+
+  const activeEffect = isSmear
+    ? SMEAR_EFFECT
+    : isGel
+    ? GEL_EFFECT
+    : isWarp
+      ? WARP_LIQUID_EFFECT
+      : LIVING_SURFACE_EFFECT;
+  const activeUniforms = isSmear
+    ? smearUniforms
+    : isGel
+      ? gelUniforms
+      : isWarp
+        ? warpUniforms
+        : uniforms;
+
+  return (
+    <Canvas pointerEvents="none" style={styles.canvas}>
+      <Fill color={colors.background} />
+      {activeEffect ? (
+        <Rect
+          x={0}
+          y={0}
+          width={SCREEN_SIZE.width}
+          height={SCREEN_SIZE.height}
+        >
+          <Shader
+            source={activeEffect}
+            uniforms={activeUniforms as unknown as Uniforms}
+          />
+        </Rect>
+      ) : null}
+    </Canvas>
+  );
+}
+
+const styles = StyleSheet.create({
+  canvas: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: SCREEN_SIZE.width,
+    height: SCREEN_SIZE.height,
+  },
+});

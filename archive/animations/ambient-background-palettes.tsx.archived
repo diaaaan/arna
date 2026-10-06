@@ -21,12 +21,11 @@ import {
 
 import {
   colors,
-  SMEAR_MODE_DEFAULT,
-  smearModes,
+  SMEAR_PALETTE_DEFAULT,
+  smearPalettes,
   smearPreset,
-  smearStyle,
   visual,
-  type SmearModeName,
+  type SmearPaletteName,
 } from '../theme/tokens';
 import { SMEAR_SOURCE } from './living-surface-smear';
 
@@ -44,36 +43,24 @@ function compileShader(source: string) {
 const SMEAR_EFFECT = compileShader(SMEAR_SOURCE);
 
 type AmbientBackgroundProps = {
-  mode?: SmearModeName;
+  palette?: SmearPaletteName;
 };
 
 export function AmbientBackground({
-  mode = SMEAR_MODE_DEFAULT,
+  palette = SMEAR_PALETTE_DEFAULT,
 }: AmbientBackgroundProps) {
   const motionPhase = useSharedValue<number>(smearPreset.reducedMotionPhase);
-  const slowPhase = useSharedValue<number>(0.2);
   const reduceMotion = useReducedMotion();
 
   useEffect(() => {
     cancelAnimation(motionPhase);
-    cancelAnimation(slowPhase);
 
     if (reduceMotion) {
       motionPhase.value = smearPreset.reducedMotionPhase;
-      slowPhase.value = 0.2;
       return;
     }
 
     motionPhase.value = 0;
-    slowPhase.value = 0;
-    slowPhase.value = withRepeat(
-      withTiming(1, {
-        duration: smearPreset.lavaDuration,
-        easing: Easing.linear,
-      }),
-      -1,
-      false,
-    );
     motionPhase.value = withRepeat(
       withTiming(1, {
         duration: smearPreset.motionDuration,
@@ -85,12 +72,10 @@ export function AmbientBackground({
 
     return () => {
       cancelAnimation(motionPhase);
-      cancelAnimation(slowPhase);
     };
-  }, [motionPhase, slowPhase, reduceMotion]);
+  }, [motionPhase, reduceMotion]);
 
-  const active = smearStyle;
-  const modeValue = (smearModes[mode] ?? smearModes[SMEAR_MODE_DEFAULT]).value;
+  const active = smearPalettes[palette] ?? smearPalettes[SMEAR_PALETTE_DEFAULT];
 
   const uniforms = useDerivedValue<Uniforms>(() => ({
     resolution: RESOLUTION,
@@ -112,8 +97,7 @@ export function AmbientBackground({
     cycleAmount: smearPreset.cycleAmount,
     textureAmount: active.textureAmount,
     tonePower: active.tonePower,
-    mode: modeValue,
-    slowPhase: slowPhase.value,
+    rayAmount: active.rayAmount,
   }));
 
   return (

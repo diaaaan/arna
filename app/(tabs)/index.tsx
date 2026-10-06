@@ -1,7 +1,9 @@
-import { useCallback, useRef, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -18,13 +20,39 @@ import { ThoughtInput } from '../../src/components/thought-input';
 import { analyzeThought } from '../../src/mind/mind-engine';
 import { createThought } from '../../src/entities/thought/thought';
 import { appendThought } from '../../src/storage/thought-storage';
-import { colors, spacing, typography } from '../../src/theme/tokens';
+import {
+  colors,
+  SMEAR_MODE_DEFAULT,
+  smearModes,
+  spacing,
+  typography,
+  type SmearModeName,
+} from '../../src/theme/tokens';
+
+const SURFACE_MODE_STORAGE_KEY = 'arna.ui.surface-mode';
+const SURFACE_MODES = Object.keys(smearModes) as SmearModeName[];
+const TITLE_TAP_COUNT = 3;
+const TITLE_TAP_WINDOW_MS = 900;
 
 export default function CaptureScreen() {
   const [feedback, setFeedback] = useState<SubmissionFeedbackMessage | null>(
     null,
   );
   const feedbackIdRef = useRef(0);
+  const [surfaceMode, setSurfaceMode] = useState<SmearModeName>(
+    SMEAR_MODE_DEFAULT,
+  );
+  const titleTapsRef = useRef({ count: 0, lastTapAt: 0 });
+
+  useEffect(() => {
+    AsyncStorage.getItem(SURFACE_MODE_STORAGE_KEY)
+      .then((stored) => {
+        if (stored && (SURFACE_MODES as string[]).includes(stored)) {
+          setSurfaceMode(stored as SmearModeName);
+        }
+      })
+      .catch(() => undefined);
+  }, []);
 
   const showFeedback = useCallback(
     (message: string, tone: SubmissionFeedbackMessage['tone']) => {
@@ -53,6 +81,31 @@ export default function CaptureScreen() {
     }
   }, [showFeedback]);
 
+  const handleTitlePress = useCallback(() => {
+    const now = Date.now();
+    const taps = titleTapsRef.current;
+    taps.count = now - taps.lastTapAt < TITLE_TAP_WINDOW_MS ? taps.count + 1 : 1;
+    taps.lastTapAt = now;
+
+    if (taps.count < TITLE_TAP_COUNT) {
+      return;
+    }
+
+    taps.count = 0;
+    setSurfaceMode((current) => {
+      const next =
+        SURFACE_MODES[
+          (SURFACE_MODES.indexOf(current) + 1) % SURFACE_MODES.length
+        ];
+      AsyncStorage.setItem(SURFACE_MODE_STORAGE_KEY, next).catch(
+        () => undefined,
+      );
+      return next;
+    });
+  }, []);
+
+  const surfaceLabel = smearModes[surfaceMode].label;
+
   const handleFeedbackDismiss = useCallback((id: number) => {
     setFeedback((currentFeedback) =>
       currentFeedback?.id === id ? null : currentFeedback,
@@ -62,7 +115,7 @@ export default function CaptureScreen() {
   return (
     <View style={styles.root}>
       <View pointerEvents="none" style={styles.backgroundLayer}>
-        <AmbientBackground />
+        <AmbientBackground mode={surfaceMode} />
       </View>
 
       <KeyboardAvoidingView
@@ -74,7 +127,13 @@ export default function CaptureScreen() {
           style={styles.safeArea}
         >
           <View style={styles.appHeader}>
-            <Text style={styles.appName}>Arna</Text>
+            <Pressable
+              accessibilityLabel={`Arna. Фон ${surfaceLabel}`}
+              hitSlop={spacing.md}
+              onPress={handleTitlePress}
+            >
+              <Text style={styles.appName}>Arna</Text>
+            </Pressable>
           </View>
 
           <ScrollView
@@ -108,7 +167,11 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   backgroundLayer: {
-    ...StyleSheet.absoluteFillObject,
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
     zIndex: 0,
   },
   foreground: {
