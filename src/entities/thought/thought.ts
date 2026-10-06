@@ -54,14 +54,14 @@ export function normalizeStoredThought(value: unknown): Thought | null {
   }
 
   const storedThought = value as Record<string, unknown>;
+  // Analysis is a derivative of the thought. If it cannot be read (for example
+  // after a model or schema change), keep the thought and drop the analysis so
+  // it can be re-analyzed instead of making the thought unreadable.
   const analysis =
     storedThought.analysis === undefined
       ? undefined
-      : normalizeStoredThoughtInterpretation(storedThought.analysis);
-
-  if (storedThought.analysis !== undefined && analysis === null) {
-    return null;
-  }
+      : (normalizeStoredThoughtInterpretation(storedThought.analysis) ??
+        undefined);
 
   const normalizedThought = {
     ...storedThought,

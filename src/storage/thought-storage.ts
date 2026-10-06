@@ -6,30 +6,14 @@ import {
   type Thought,
 } from '../entities/thought/thought';
 
+import { readCollection } from './json-collection';
+
 export const THOUGHTS_STORAGE_KEY = 'arna.thoughts.v1';
 
 let writeQueue: Promise<void> = Promise.resolve();
 
 export async function loadThoughts(): Promise<Thought[]> {
-  const storedValue = await AsyncStorage.getItem(THOUGHTS_STORAGE_KEY);
-
-  if (storedValue === null) {
-    return [];
-  }
-
-  const parsedValue: unknown = JSON.parse(storedValue);
-
-  if (!Array.isArray(parsedValue)) {
-    throw new Error('Stored thoughts have an invalid format.');
-  }
-
-  const normalizedThoughts = parsedValue.map(normalizeStoredThought);
-
-  if (normalizedThoughts.some((thought) => thought === null)) {
-    throw new Error('Stored thoughts have an invalid format.');
-  }
-
-  return normalizedThoughts as Thought[];
+  return readCollection(THOUGHTS_STORAGE_KEY, normalizeStoredThought);
 }
 
 export function appendThought(thought: Thought): Promise<void> {

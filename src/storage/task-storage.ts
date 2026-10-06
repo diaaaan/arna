@@ -2,29 +2,25 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { isTask, type Task } from '../entities/task/task';
 
+import { readCollection } from './json-collection';
+
 export const TASKS_STORAGE_KEY = 'arna.tasks.v1';
 
 let writeQueue: Promise<void> = Promise.resolve();
 
 export async function loadTasks(): Promise<Task[]> {
-  const storedValue = await AsyncStorage.getItem(TASKS_STORAGE_KEY);
-
-  if (storedValue === null) {
-    return [];
-  }
-
-  const parsedValue: unknown = JSON.parse(storedValue);
-
-  if (!Array.isArray(parsedValue) || !parsedValue.every(isTask)) {
-    throw new Error('Stored tasks have an invalid format.');
-  }
-
-  return parsedValue;
+  return readCollection(TASKS_STORAGE_KEY, (value) =>
+    isTask(value) ? value : null,
+  );
 }
 
 export function appendTask(task: Task): Promise<void> {
   const operation = writeQueue.then(async () => {
     const tasks = await loadTasks();
+
+    if (tasks.some((stored) => stored.originThoughtId === task.originThoughtId)) {
+      return;
+    }
 
     await AsyncStorage.setItem(
       TASKS_STORAGE_KEY,

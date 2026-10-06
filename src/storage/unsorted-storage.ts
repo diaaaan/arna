@@ -5,29 +5,27 @@ import {
   type UnsortedThought,
 } from '../entities/unsorted-thought/unsorted-thought';
 
+import { readCollection } from './json-collection';
+
 export const UNSORTED_STORAGE_KEY = 'arna.unsorted.v1';
 
 let writeQueue: Promise<void> = Promise.resolve();
 
 export async function loadUnsortedThoughts(): Promise<UnsortedThought[]> {
-  const storedValue = await AsyncStorage.getItem(UNSORTED_STORAGE_KEY);
-
-  if (storedValue === null) {
-    return [];
-  }
-
-  const parsedValue: unknown = JSON.parse(storedValue);
-
-  if (!Array.isArray(parsedValue) || !parsedValue.every(isUnsortedThought)) {
-    throw new Error('Stored unsorted thoughts have an invalid format.');
-  }
-
-  return parsedValue;
+  return readCollection(UNSORTED_STORAGE_KEY, (value) =>
+    isUnsortedThought(value) ? value : null,
+  );
 }
 
 export function appendUnsortedThought(thought: UnsortedThought): Promise<void> {
   const operation = writeQueue.then(async () => {
     const thoughts = await loadUnsortedThoughts();
+
+    if (
+      thoughts.some((stored) => stored.originThoughtId === thought.originThoughtId)
+    ) {
+      return;
+    }
 
     await AsyncStorage.setItem(
       UNSORTED_STORAGE_KEY,

@@ -64,8 +64,8 @@ export async function analyzeThought(
   if (interpretation.status === 'success') {
     try {
       await deriveEntities(thought, interpretation);
-    } catch {
-      debugLog('Derivation failed');
+    } catch (error: unknown) {
+      console.warn('[Mind Engine] Derivation failed', error);
     }
   }
 

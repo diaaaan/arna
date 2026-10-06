@@ -15,7 +15,10 @@ import {
 
 import { ThoughtItem } from '../../src/components/thought-item';
 import { analyzeThought } from '../../src/mind/mind-engine';
-import { createPendingInterpretation } from '../../src/mind/types/interpretation';
+import {
+  createFailedInterpretation,
+  createPendingInterpretation,
+} from '../../src/mind/types/interpretation';
 import type { Thought } from '../../src/entities/thought/thought';
 import { loadThoughts } from '../../src/storage/thought-storage';
 import {
@@ -28,8 +31,28 @@ import {
 
 type LoadState = 'loading' | 'ready' | 'error';
 
+const STALE_PENDING_MS = 2 * 60 * 1000;
+
+// An analysis left in "pending" (for example because the app was closed while
+// it ran) would otherwise spin forever. Show it as failed so it can be retried.
+function resolveStalePending(thought: Thought): Thought {
+  const analysis = thought.analysis;
+
+  if (
+    analysis?.status === 'pending' &&
+    Date.now() - Date.parse(thought.updatedAt) > STALE_PENDING_MS
+  ) {
+    return {
+      ...thought,
+      analysis: createFailedInterpretation('timeout', analysis.model),
+    };
+  }
+
+  return thought;
+}
+
 function sortNewestFirst(thoughts: Thought[]) {
-  return [...thoughts].sort((firstThought, secondThought) =>
+  return [...thoughts.map(resolveStalePending)].sort((firstThought, secondThought) =>
     secondThought.createdAt.localeCompare(firstThought.createdAt),
   );
 }

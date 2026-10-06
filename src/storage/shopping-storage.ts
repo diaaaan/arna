@@ -5,24 +5,16 @@ import {
   type ShoppingItem,
 } from '../entities/shopping-item/shopping-item';
 
+import { readCollection } from './json-collection';
+
 export const SHOPPING_ITEMS_STORAGE_KEY = 'arna.shopping-items.v1';
 
 let writeQueue: Promise<void> = Promise.resolve();
 
 export async function loadShoppingItems(): Promise<ShoppingItem[]> {
-  const storedValue = await AsyncStorage.getItem(SHOPPING_ITEMS_STORAGE_KEY);
-
-  if (storedValue === null) {
-    return [];
-  }
-
-  const parsedValue: unknown = JSON.parse(storedValue);
-
-  if (!Array.isArray(parsedValue) || !parsedValue.every(isShoppingItem)) {
-    throw new Error('Stored shopping items have an invalid format.');
-  }
-
-  return parsedValue;
+  return readCollection(SHOPPING_ITEMS_STORAGE_KEY, (value) =>
+    isShoppingItem(value) ? value : null,
+  );
 }
 
 export function appendShoppingItems(
@@ -30,10 +22,20 @@ export function appendShoppingItems(
 ): Promise<void> {
   const operation = writeQueue.then(async () => {
     const storedShoppingItems = await loadShoppingItems();
+    const originThoughtIds = new Set(
+      storedShoppingItems.map((stored) => stored.originThoughtId),
+    );
+    const newShoppingItems = shoppingItems.filter(
+      (item) => !originThoughtIds.has(item.originThoughtId),
+    );
+
+    if (newShoppingItems.length === 0) {
+      return;
+    }
 
     await AsyncStorage.setItem(
       SHOPPING_ITEMS_STORAGE_KEY,
-      JSON.stringify([...storedShoppingItems, ...shoppingItems]),
+      JSON.stringify([...storedShoppingItems, ...newShoppingItems]),
     );
   });
 
