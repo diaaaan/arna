@@ -168,6 +168,16 @@ export const smearPreset = {
   reducedMotionPhase: 0.3,
 } as const;
 
+// How the Living Surface reacts to the user. All values are gentle on purpose.
+export const surfaceReaction = {
+  // Fraction of the picture mixed toward the dark base while the field is focused.
+  focusDim: 0.3,
+  // How much slower the surface moves while the field is focused (0 = no change).
+  focusSlowdown: 0.55,
+  // Transition length, ms.
+  focusDuration: 650,
+} as const;
+
 // The "dusk" palette: mostly deep blue and violet, pink and apricot only as
 // a few bright spots. Other palettes: archive/animations.
 export const smearStyle = {

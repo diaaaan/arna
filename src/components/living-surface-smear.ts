@@ -25,6 +25,7 @@ uniform float textureAmount;
 uniform float tonePower;
 uniform float mode;
 uniform float slowPhase;
+uniform float focusDim;
 
 // Lattice-free smooth noise (sines only, no hashing).
 float smoothNoise(float2 p) {
@@ -159,6 +160,9 @@ half4 main(float2 position) {
   // Keep the lower screen quieter, but never dead black.
   float lower = smoothstep(0.55, 1.0, uv.y);
   col = mix(col, mix(backgroundColor, col, 0.35), lower);
+
+  // Calm the surface while the user is typing: fade toward the dark base.
+  col = mix(col, backgroundColor, focusDim);
 
   // Fine static grain.
   float g = fract(sin(dot(position, float2(12.9898, 78.233))) * 43758.5453);

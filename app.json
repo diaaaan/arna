@@ -7,11 +7,21 @@
     "scheme": "arna",
     "userInterfaceStyle": "automatic",
     "android": {
-      "softwareKeyboardLayoutMode": "resize"
+      "softwareKeyboardLayoutMode": "resize",
+      "package": "com.app.arna"
     },
-    "plugins": ["expo-router"],
+    "plugins": [
+      "expo-router"
+    ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "ac356917-6cf3-408e-be61-9a2db7ab33e3"
+      }
+    },
+    "owner": "diaaaan"
   }
 }

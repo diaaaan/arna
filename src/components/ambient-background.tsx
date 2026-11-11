@@ -10,13 +10,10 @@ import {
 } from '@shopify/react-native-skia';
 import type { Uniforms } from '@shopify/react-native-skia';
 import {
-  cancelAnimation,
-  Easing,
   useDerivedValue,
+  useFrameCallback,
   useReducedMotion,
   useSharedValue,
-  withRepeat,
-  withTiming,
 } from 'react-native-reanimated';
 
 import {
@@ -25,9 +22,11 @@ import {
   smearModes,
   smearPreset,
   smearStyle,
+  surfaceReaction,
   visual,
   type SmearModeName,
 } from '../theme/tokens';
+import { surfaceSignal } from '../theme/surface-signal';
 import { SMEAR_SOURCE } from './living-surface-smear';
 
 const SCREEN_SIZE = Dimensions.get('screen');
@@ -54,40 +53,34 @@ export function AmbientBackground({
   const slowPhase = useSharedValue<number>(0.2);
   const reduceMotion = useReducedMotion();
 
-  useEffect(() => {
-    cancelAnimation(motionPhase);
-    cancelAnimation(slowPhase);
+  // Phases advance frame by frame so the speed can change at any moment
+  // without a jump. The shader only reads them through whole harmonics, so the
+  // loop stays seamless.
+  const motionDuration = smearPreset.motionDuration;
+  const lavaDuration = smearPreset.lavaDuration;
+  const focusSlowdown = surfaceReaction.focusSlowdown;
+  const frameCallback = useFrameCallback((frame) => {
+    'worklet';
+    const dt = frame.timeSincePreviousFrame ?? 0;
+    const speed = 1 - focusSlowdown * surfaceSignal.focus.value;
+    motionPhase.set((motionPhase.get() + (dt / motionDuration) * speed) % 1);
+    slowPhase.set((slowPhase.get() + (dt / lavaDuration) * speed) % 1);
+  }, false);
 
+  useEffect(() => {
     if (reduceMotion) {
-      motionPhase.value = smearPreset.reducedMotionPhase;
-      slowPhase.value = 0.2;
+      frameCallback.setActive(false);
+      motionPhase.set(smearPreset.reducedMotionPhase);
+      slowPhase.set(0.2);
       return;
     }
 
-    motionPhase.value = 0;
-    slowPhase.value = 0;
-    slowPhase.value = withRepeat(
-      withTiming(1, {
-        duration: smearPreset.lavaDuration,
-        easing: Easing.linear,
-      }),
-      -1,
-      false,
-    );
-    motionPhase.value = withRepeat(
-      withTiming(1, {
-        duration: smearPreset.motionDuration,
-        easing: Easing.linear,
-      }),
-      -1,
-      false,
-    );
+    frameCallback.setActive(true);
 
     return () => {
-      cancelAnimation(motionPhase);
-      cancelAnimation(slowPhase);
+      frameCallback.setActive(false);
     };
-  }, [motionPhase, slowPhase, reduceMotion]);
+  }, [frameCallback, motionPhase, slowPhase, reduceMotion]);
 
   const active = smearStyle;
   const modeValue = (smearModes[mode] ?? smearModes[SMEAR_MODE_DEFAULT]).value;
@@ -114,6 +107,7 @@ export function AmbientBackground({
     tonePower: active.tonePower,
     mode: modeValue,
     slowPhase: slowPhase.value,
+    focusDim: surfaceReaction.focusDim * surfaceSignal.focus.value,
   }));
 
   return (

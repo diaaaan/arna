@@ -1,5 +1,6 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
+  Keyboard,
   Pressable,
   StyleSheet,
   Text,
@@ -7,6 +8,7 @@ import {
   View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Easing, withTiming } from 'react-native-reanimated';
 
 import {
   colors,
@@ -15,9 +17,18 @@ import {
   radius,
   shadows,
   spacing,
+  surfaceReaction,
   typography,
   visual,
 } from '../theme/tokens';
+import { surfaceSignal } from '../theme/surface-signal';
+
+function setSurfaceFocus(focused: boolean) {
+  surfaceSignal.focus.value = withTiming(focused ? 1 : 0, {
+    duration: surfaceReaction.focusDuration,
+    easing: Easing.out(Easing.cubic),
+  });
+}
 
 type ThoughtInputProps = {
   onSubmit: (rawText: string) => Promise<boolean>;
@@ -29,6 +40,19 @@ export function ThoughtInput({ onSubmit }: ThoughtInputProps) {
   const [isFocused, setIsFocused] = useState(false);
   const inputRef = useRef<TextInput>(null);
   const canSubmit = rawText.trim().length > 0 && !isSubmitting;
+
+  useEffect(() => {
+    // Android keeps the field focused after the keyboard is hidden with the
+    // back button; blur it so the surface can relax too.
+    const subscription = Keyboard.addListener('keyboardDidHide', () => {
+      inputRef.current?.blur();
+    });
+
+    return () => {
+      subscription.remove();
+      setSurfaceFocus(false);
+    };
+  }, []);
 
   const handleSubmit = async () => {
     if (!canSubmit) {
@@ -82,9 +106,11 @@ export function ThoughtInput({ onSubmit }: ThoughtInputProps) {
             onChangeText={setRawText}
             onFocus={() => {
               setIsFocused(true);
+              setSurfaceFocus(true);
             }}
             onBlur={() => {
               setIsFocused(false);
+              setSurfaceFocus(false);
             }}
             onPressIn={() => inputRef.current?.focus()}
             placeholder="Запишите мысль…"
@@ -92,7 +118,6 @@ export function ThoughtInput({ onSubmit }: ThoughtInputProps) {
             selectionColor={colors.focus}
             cursorColor={colors.focus}
             multiline
-            autoFocus
             blurOnSubmit={false}
             submitBehavior="newline"
             textAlignVertical="top"
