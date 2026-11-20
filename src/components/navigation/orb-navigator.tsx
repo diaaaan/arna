@@ -37,7 +37,8 @@ import { scheduleOnRN } from 'react-native-worklets';
 import { surfaceSignal } from '../../theme/surface-signal';
 import { colors, navigation, surfaceReaction, typography } from '../../theme/tokens';
 import { GLASS_BLOB_SOURCE, HIDDEN_CIRCLE, NO_RING } from '../glass-blob';
-import { LiquidOrb } from './liquid-orb';
+import { useOrbStyle } from '../../theme/orb-style';
+import { OrbVisual } from './orb-visual';
 
 type TabBarProps = Parameters<
   NonNullable<ComponentProps<typeof Tabs>['tabBar']>
@@ -56,7 +57,7 @@ type Section = {
 
 // Left to right: all thoughts, writing in the middle, collections. The bubbles
 // sit close on an arc and flow into each other, like the collections wheel.
-const ANGLE_STEP = 28;
+const ANGLE_STEP = 34;
 const ANGLE_FIRST = -90 - ANGLE_STEP;
 const SECTIONS: readonly Section[] = [
   { route: 'thoughts', label: 'Thoughts', icon: 'reader-outline', activeIcon: 'reader', angle: ANGLE_FIRST },
@@ -67,12 +68,12 @@ const SECTIONS: readonly Section[] = [
 // Geometry, in points. The box spans the screen width and sits on its bottom edge.
 const BOX_H = 360;
 const ORB_R = navigation.orbSize / 2;
-const ORB_CANVAS = navigation.orbSize + 40;
+const ORB_CANVAS = navigation.orbSize + 80;
 const ARC_R = 168;
 const LOBE = 84;
-const LOBE_R = 33;
+const LOBE_R = 34;
 const LOBE_GROW = 12;
-const BLOB_SMOOTHNESS = 30;
+const BLOB_SMOOTHNESS = 46;
 // The finger "rides" the arc inside this band around it.
 const BAND_IN = 70;
 const BAND_OUT = 80;
@@ -121,6 +122,7 @@ function haptic(kind: 'press' | 'select' | 'go') {
 export function OrbNavigator({ state, navigateToTab, insets }: TabBarProps) {
   const { width, height: windowHeight } = useWindowDimensions();
   const reduceMotion = useReducedMotion();
+  const orbLook = useOrbStyle();
   const [isOpen, setIsOpen] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const progress = useSharedValue(0);
@@ -426,7 +428,8 @@ export function OrbNavigator({ state, navigateToTab, insets }: TabBarProps) {
               orbStyle,
             ]}
           >
-            <LiquidOrb
+            <OrbVisual
+              variant={orbLook}
               size={ORB_CANVAS}
               radius={ORB_R}
               screenX={wrapLeft}

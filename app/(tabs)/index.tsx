@@ -20,6 +20,8 @@ import { analyzeThought } from '../../src/mind/mind-engine';
 import { createThought } from '../../src/entities/thought/thought';
 import { appendThought } from '../../src/storage/thought-storage';
 import { surfaceSignal } from '../../src/theme/surface-signal';
+import { cycleOrbStyle, orbStyleLabel } from '../../src/theme/orb-style';
+import * as Haptics from 'expo-haptics';
 import {
   colors,
   navigation,
@@ -112,6 +114,19 @@ export default function CaptureScreen() {
 
   const surfaceLabel = smearModes[surfaceMode].label;
 
+  // Experiment: a long press on the logo cycles the look of the orb.
+  const [orbHint, setOrbHint] = useState<string | null>(null);
+  const orbHintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleTitleLongPress = useCallback(() => {
+    const next = cycleOrbStyle();
+    void Haptics.selectionAsync().catch(() => undefined);
+    setOrbHint(`Orb: ${orbStyleLabel(next)}`);
+    if (orbHintTimer.current) {
+      clearTimeout(orbHintTimer.current);
+    }
+    orbHintTimer.current = setTimeout(() => setOrbHint(null), 1600);
+  }, []);
+
   const handleFeedbackDismiss = useCallback((id: number) => {
     setFeedback((currentFeedback) =>
       currentFeedback?.id === id ? null : currentFeedback,
@@ -133,9 +148,11 @@ export default function CaptureScreen() {
               accessibilityLabel={`Arna. Background: ${surfaceLabel}`}
               hitSlop={spacing.md}
               onPress={handleTitlePress}
+              onLongPress={handleTitleLongPress}
             >
               <Text style={styles.appName}>arna</Text>
             </Pressable>
+            {orbHint ? <Text style={styles.orbHint}>{orbHint}</Text> : null}
           </View>
 
           <ScrollView
@@ -181,6 +198,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.sm,
     paddingBottom: spacing.xs,
+  },
+  orbHint: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
   },
   appName: {
     ...typography.appName,
