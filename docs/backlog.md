@@ -25,3 +25,5 @@
 ## Future
 
 ## Ideas
+
+- Living Surface: lava masses linked by thin stretching threads, like neurons.

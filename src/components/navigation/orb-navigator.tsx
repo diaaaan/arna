@@ -24,6 +24,7 @@ import Animated, {
   interpolate,
   useAnimatedStyle,
   useDerivedValue,
+  useFrameCallback,
   useReducedMotion,
   useSharedValue,
   withRepeat,
@@ -36,8 +37,8 @@ import { scheduleOnRN } from 'react-native-worklets';
 
 import { surfaceSignal } from '../../theme/surface-signal';
 import { colors, navigation, surfaceReaction, typography } from '../../theme/tokens';
-import { GLASS_BLOB_SOURCE, HIDDEN_CIRCLE } from '../glass-blob';
 import { OrbVisual } from './orb-visual';
+import { RIPPLE_NODES_SOURCE } from './ripple-nodes';
 
 type TabBarProps = Parameters<
   NonNullable<ComponentProps<typeof Tabs>['tabBar']>
@@ -68,15 +69,14 @@ const SECTIONS: readonly Section[] = [
 const BOX_H = 360;
 const ORB_R = navigation.orbSize / 2;
 const ORB_CANVAS = navigation.orbSize + 80;
-const ARC_R = 178;
+const ARC_R = 134;
 const LOBE = 84;
-const LOBE_R = 34;
-const LOBE_GROW = 12;
-const BLOB_SMOOTHNESS = 30;
-// The bubbles are always linked by a liquid band along the arc, which grows
-// into each of them with a soft fillet.
-const LINK_WIDTH = 4;
-const LINK_SMOOTHNESS = 26;
+// Radius of the rings around each section, and how much the one under the
+// finger grows.
+const NODE_R = 46;
+const NODE_GROW = 16;
+const LOBE_R = 40;
+// The sections are always linked by a thin line of light along the arc.
 const LINK_START = ((ANGLE_FIRST) * Math.PI) / 180;
 const LINK_END = ((-90 + ANGLE_STEP) * Math.PI) / 180;
 
@@ -92,9 +92,9 @@ const OPEN_SPRING = { damping: 17, stiffness: 220, mass: 0.8 };
 const FOCUS_SPRING = { damping: 20, stiffness: 380 };
 const CLOSE_TIMING = { duration: 200, easing: Easing.in(Easing.cubic) };
 
-const BLOB_EFFECT = (() => {
+const NODES_EFFECT = (() => {
   try {
-    return Skia.RuntimeEffect.Make(GLASS_BLOB_SOURCE);
+    return Skia.RuntimeEffect.Make(RIPPLE_NODES_SOURCE);
   } catch {
     return null;
   }
@@ -336,35 +336,39 @@ export function OrbNavigator({ state, navigateToTab, insets }: TabBarProps) {
     },
   });
 
-  // Glass bubbles for the sections, flowing into each other (not into the orb).
-  const blobUniforms = useDerivedValue<Uniforms>(() => {
+  // The rings move only while the menu is open.
+  const ringTime = useSharedValue(0);
+  useFrameCallback((frame) => {
+    'worklet';
+    if (reduceMotion || progress.value < 0.001) {
+      return;
+    }
+    const dt = frame.timeSincePreviousFrame ?? 0;
+    ringTime.set((ringTime.get() + dt / 4200) % 1);
+  });
+
+  // Ripple rings for the sections, linked by a line of light along the arc.
+  const nodeUniforms = useDerivedValue<Uniforms>(() => {
     const p = progress.value;
-    const linkIn = interpolate(p, [0.55, 1], [0, 1], 'clamp');
-    const lobe = (i: number) => {
+    const node = (i: number) => {
       const q = lobeProgress(p, i);
       const w = focusWeight(i, focusIndex.value, focusAmount.value);
-      const r = LOBE_R + LOBE_GROW * w;
-      const startR = ORB_R * 0.5;
       return [
         orb.x + (lobeX[i] - orb.x) * q,
         orb.y + (lobeY[i] - orb.y) * q,
-        startR + (r - startR) * Math.min(q, 1.06),
+        (NODE_R + NODE_GROW * w) * Math.min(1, q * 1.2),
       ];
     };
     return {
-      size: [width, BOX_H],
-      c0: lobe(0),
-      c1: lobe(1),
-      c2: lobe(2),
-      c3: HIDDEN_CIRCLE,
-      c4: HIDDEN_CIRCLE,
-      c5: HIDDEN_CIRCLE,
-      smoothness: BLOB_SMOOTHNESS,
-      alpha: Math.min(1, p * 4),
-      ringCenter: [orb.x, orb.y],
-      ring: [ARC_R, LINK_START, LINK_END],
-      ringWidth: LINK_WIDTH * linkIn,
-      ringSmoothness: LINK_SMOOTHNESS,
+      n0: node(0),
+      n1: node(1),
+      n2: node(2),
+      weights: [0, 1, 2].map((i) => focusWeight(i, focusIndex.value, focusAmount.value)),
+      time: ringTime.value,
+      alpha: Math.min(1, p * 3),
+      arcCenter: [orb.x, orb.y],
+      arc: [ARC_R, LINK_START, LINK_END],
+      arcAlpha: interpolate(p, [0.55, 1], [0, 1], 'clamp'),
     };
   });
 
@@ -398,10 +402,10 @@ export function OrbNavigator({ state, navigateToTab, insets }: TabBarProps) {
       </Animated.View>
 
       <View pointerEvents="box-none" style={[styles.box, { width }]}>
-        {BLOB_EFFECT ? (
+        {NODES_EFFECT ? (
           <Canvas pointerEvents="none" style={[styles.canvas, { width }]}>
             <Fill>
-              <Shader source={BLOB_EFFECT} uniforms={blobUniforms} />
+              <Shader source={NODES_EFFECT} uniforms={nodeUniforms} />
             </Fill>
           </Canvas>
         ) : null}
