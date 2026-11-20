@@ -3,7 +3,10 @@
 // Surface. Used by the orb menu and the collections wheel.
 //
 // Each circle is float3(x, y, radius) in canvas points. Unused slots use
-// HIDDEN_CIRCLE.
+// HIDDEN_CIRCLE. An optional thin arc ("ring") can link the bubbles: it is
+// merged the same way, so it grows out of each bubble with a soft fillet.
+// ring = float3(radius, startAngle, endAngle) around ringCenter, angles in
+// radians (screen coordinates); ringWidth <= 0 turns it off.
 export const GLASS_BLOB_SOURCE = `
 uniform float2 size;
 uniform float3 c0;
@@ -14,6 +17,10 @@ uniform float3 c4;
 uniform float3 c5;
 uniform float smoothness;
 uniform float alpha;
+uniform float2 ringCenter;
+uniform float3 ring;
+uniform float ringWidth;
+uniform float ringSmoothness;
 
 float smin(float a, float b, float k) {
   float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
@@ -24,6 +31,20 @@ float circle(float2 p, float3 c) {
   return length(p - c.xy) - c.z;
 }
 
+float arc(float2 p) {
+  if (ringWidth <= 0.0) {
+    return 10000.0;
+  }
+  float2 v = p - ringCenter;
+  float ang = atan(v.y, v.x);
+  if (ang >= ring.y && ang <= ring.z) {
+    return abs(length(v) - ring.x) - ringWidth;
+  }
+  float2 e0 = ringCenter + ring.x * float2(cos(ring.y), sin(ring.y));
+  float2 e1 = ringCenter + ring.x * float2(cos(ring.z), sin(ring.z));
+  return min(length(p - e0), length(p - e1)) - ringWidth;
+}
+
 half4 main(float2 p) {
   float d = circle(p, c0);
   d = smin(d, circle(p, c1), smoothness);
@@ -31,6 +52,7 @@ half4 main(float2 p) {
   d = smin(d, circle(p, c3), smoothness);
   d = smin(d, circle(p, c4), smoothness);
   d = smin(d, circle(p, c5), smoothness);
+  d = smin(d, arc(p), ringSmoothness);
 
   float inside = 1.0 - smoothstep(-0.8, 0.8, d);
   float t = clamp(p.y / size.y, 0.0, 1.0);
@@ -52,3 +74,11 @@ half4 main(float2 p) {
 `;
 
 export const HIDDEN_CIRCLE = [-10000, -10000, 1] as const;
+
+// Uniforms that switch the ring off.
+export const NO_RING = {
+  ringCenter: [0, 0],
+  ring: [0, 0, 0],
+  ringWidth: 0,
+  ringSmoothness: 1,
+} as const;

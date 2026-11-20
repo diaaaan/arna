@@ -12,7 +12,7 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 
-import { GLASS_BLOB_SOURCE, HIDDEN_CIRCLE } from '../../components/glass-blob';
+import { GLASS_BLOB_SOURCE, HIDDEN_CIRCLE, NO_RING } from '../../components/glass-blob';
 import { colors, typography } from '../../theme/tokens';
 
 // Vertical wheel of collections at the right edge, in the same glass-bubble
@@ -176,6 +176,7 @@ export function CategoryWheel({ items, selectedId, onSelect, height }: CategoryW
       c5: slots[5],
       smoothness: 24,
       alpha: 1,
+      ...NO_RING,
     };
   });
 

@@ -2,11 +2,9 @@ import { Ionicons } from '@expo/vector-icons';
 import {
   Blur,
   Canvas,
-  Circle,
   Fill,
+  LinearGradient,
   Oval,
-  Path,
-  RadialGradient,
   Shader,
   Skia,
   vec,
@@ -72,6 +70,9 @@ const SECTIONS: readonly Section[] = [
   { route: 'collections', label: 'Collections', icon: 'albums-outline', activeIcon: 'albums', angle: -32 },
 ];
 
+const SECTIONS_ANGLES_MIN = Math.min(...SECTIONS.map((s) => s.angle));
+const SECTIONS_ANGLES_MAX = Math.max(...SECTIONS.map((s) => s.angle));
+
 // Geometry, in points. The box spans the screen width and sits on its bottom edge.
 const BOX_H = 350;
 // The orb is an oval, wider than tall.
@@ -79,21 +80,20 @@ const ORB_RX = navigation.orbWidth / 2;
 const ORB_RY = navigation.orbSize / 2;
 const ORB_CANVAS_W = navigation.orbWidth + 70;
 const ORB_CANVAS_H = navigation.orbSize + 70;
-const CORE_R = 104;
 const ARC_R = 162;
 const LOBE = 84;
 const LOBE_R = 40;
 const LOBE_GROW = 10;
 const HIT_R = 50;
-const ARC_GAP_DEG = 16;
+// The linking arc runs between the outer sections.
+const ARC_START = (SECTIONS_ANGLES_MIN * Math.PI) / 180;
+const ARC_END = (SECTIONS_ANGLES_MAX * Math.PI) / 180;
+const ARC_WIDTH = 1.2;
 
 // A quick press without movement opens the menu and leaves it open for taps.
 const TAP_MS = 220;
 const TAP_SLOP = 10;
 
-// Warm orb gradient from the UI kit (gradient/orb), toned down.
-const ORB_COLORS = ['#E8D8A6', '#E3A98F', '#D18FAE', '#7A62D2', '#3F2D93'];
-const ORB_STOPS = [0, 0.22, 0.5, 0.78, 1];
 
 const OPEN_SPRING = { damping: 17, stiffness: 180, mass: 0.85 };
 const FOCUS_SPRING = { damping: 18, stiffness: 260 };
@@ -160,17 +160,6 @@ export function OrbNavigator({ state, navigateToTab, insets }: TabBarProps) {
     [orb],
   );
 
-  // A thin arc that links the sections, with gaps around each icon.
-  const arcPath = useMemo(() => {
-    const builder = Skia.PathBuilder.Make();
-    const rect = Skia.XYWHRect(orb.x - ARC_R, orb.y - ARC_R, ARC_R * 2, ARC_R * 2);
-    for (let i = 0; i < SECTIONS.length - 1; i += 1) {
-      const from = SECTIONS[i].angle + ARC_GAP_DEG;
-      const to = SECTIONS[i + 1].angle - ARC_GAP_DEG;
-      builder.addArc(rect, from, to - from);
-    }
-    return builder.build();
-  }, [orb]);
 
   // The living surface only moves on the capture screen.
   useEffect(() => {
@@ -339,7 +328,8 @@ export function OrbNavigator({ state, navigateToTab, insets }: TabBarProps) {
   // like metaballs; the bubble under the finger swells.
   const blobUniforms = useDerivedValue<Uniforms>(() => {
     const p = progress.value;
-    const pc = Math.min(p, 1.08);
+    // The link grows once the bubbles have settled on the arc.
+    const ringIn = interpolate(p, [0.75, 1], [0, 1], 'clamp');
     const lobe = (i: number) => {
       const q = lobeProgress(p, i);
       const target = lobes[i];
@@ -355,21 +345,21 @@ export function OrbNavigator({ state, navigateToTab, insets }: TabBarProps) {
     };
     return {
       size: [width, BOX_H],
-      c0: [orb.x, orb.y, ORB_RY + (CORE_R - ORB_RY) * pc],
-      c1: lobe(0),
-      c2: lobe(1),
-      c3: lobe(2),
+      // The sections link to each other through a thin arc, not to the orb.
+      c0: lobe(0),
+      c1: lobe(1),
+      c2: lobe(2),
+      c3: HIDDEN_CIRCLE,
       c4: HIDDEN_CIRCLE,
       c5: HIDDEN_CIRCLE,
-      smoothness: 40,
+      smoothness: 1,
       alpha: Math.min(1, p * 4),
+      ringCenter: [orb.x, orb.y],
+      ring: [ARC_R, ARC_START, ARC_END],
+      ringWidth: ARC_WIDTH * ringIn,
+      ringSmoothness: 16,
     };
   });
-
-  const arcEnd = useDerivedValue(() =>
-    interpolate(progress.value, [0.3, 1], [0, 1], 'clamp'),
-  );
-  const arcOpacity = useDerivedValue(() => Math.min(1, progress.value * 1.5));
 
   const scrimStyle = useAnimatedStyle(() => ({
     opacity: Math.min(1, progress.value),
@@ -415,16 +405,6 @@ export function OrbNavigator({ state, navigateToTab, insets }: TabBarProps) {
               <Shader source={BLOB_EFFECT} uniforms={blobUniforms} />
             </Fill>
           ) : null}
-          <Path
-            path={arcPath}
-            style="stroke"
-            strokeWidth={1}
-            strokeCap="round"
-            color="rgba(220, 219, 232, 0.32)"
-            start={0}
-            end={arcEnd}
-            opacity={arcOpacity}
-          />
         </Canvas>
 
         <Animated.Text
@@ -476,38 +456,42 @@ export function OrbNavigator({ state, navigateToTab, insets }: TabBarProps) {
           onResponderTerminate={close}
         >
           <Canvas pointerEvents="none" style={styles.orbCanvas}>
-            <Oval
-              x={ORB_CANVAS_W / 2 - ORB_RX}
-              y={ORB_CANVAS_H / 2 - ORB_RY + 4}
-              width={ORB_RX * 2}
-              height={ORB_RY * 2}
-              color="rgba(227, 169, 143, 0.38)"
-            >
-              <Blur blur={18} />
-            </Oval>
+            {/* A translucent glass oval, same material as the bubbles. */}
             <Oval
               x={ORB_CANVAS_W / 2 - ORB_RX}
               y={ORB_CANVAS_H / 2 - ORB_RY}
               width={ORB_RX * 2}
               height={ORB_RY * 2}
-              opacity={0.94}
             >
-              <RadialGradient
-                c={vec(ORB_CANVAS_W / 2 - ORB_RX * 0.15, ORB_CANVAS_H / 2 - ORB_RY * 0.5)}
-                r={ORB_RX * 1.35}
-                colors={ORB_COLORS}
-                positions={ORB_STOPS}
+              <LinearGradient
+                start={vec(0, ORB_CANVAS_H / 2 - ORB_RY)}
+                end={vec(0, ORB_CANVAS_H / 2 + ORB_RY)}
+                colors={['rgba(78, 70, 116, 0.62)', 'rgba(26, 24, 40, 0.62)']}
               />
-              <Blur blur={1.2} />
             </Oval>
-            <Circle
-              cx={ORB_CANVAS_W / 2 - ORB_RX * 0.25}
-              cy={ORB_CANVAS_H / 2 - ORB_RY * 0.55}
-              r={ORB_RY * 0.2}
-              color="rgba(255, 255, 255, 0.32)"
+            <Oval
+              x={ORB_CANVAS_W / 2 - ORB_RX * 0.62}
+              y={ORB_CANVAS_H / 2 - ORB_RY * 0.86}
+              width={ORB_RX * 1.24}
+              height={ORB_RY * 0.7}
+              color="rgba(255, 255, 255, 0.07)"
             >
-              <Blur blur={7} />
-            </Circle>
+              <Blur blur={10} />
+            </Oval>
+            <Oval
+              x={ORB_CANVAS_W / 2 - ORB_RX + 0.75}
+              y={ORB_CANVAS_H / 2 - ORB_RY + 0.75}
+              width={ORB_RX * 2 - 1.5}
+              height={ORB_RY * 2 - 1.5}
+              style="stroke"
+              strokeWidth={1.2}
+            >
+              <LinearGradient
+                start={vec(0, ORB_CANVAS_H / 2 - ORB_RY)}
+                end={vec(0, ORB_CANVAS_H / 2 + ORB_RY * 0.2)}
+                colors={['rgba(255, 255, 255, 0.55)', 'rgba(255, 255, 255, 0.06)']}
+              />
+            </Oval>
           </Canvas>
         </Animated.View>
       </View>
