@@ -36,7 +36,7 @@ import { scheduleOnRN } from 'react-native-worklets';
 
 import { surfaceSignal } from '../../theme/surface-signal';
 import { colors, navigation, surfaceReaction, typography } from '../../theme/tokens';
-import { GLASS_BLOB_SOURCE, HIDDEN_CIRCLE } from '../glass-blob';
+import { GLASS_BLOB_SOURCE, HIDDEN_CIRCLE, NO_RING } from '../glass-blob';
 import { LiquidOrb } from './liquid-orb';
 
 type TabBarProps = Parameters<
@@ -54,28 +54,29 @@ type Section = {
   angle: number;
 };
 
-// Left to right: all thoughts, writing in the middle, collections.
+// Left to right: all thoughts, writing in the middle, collections. The bubbles
+// sit close on an arc and flow into each other, like the collections wheel.
+const ANGLE_STEP = 28;
+const ANGLE_FIRST = -90 - ANGLE_STEP;
 const SECTIONS: readonly Section[] = [
-  { route: 'thoughts', label: 'Thoughts', icon: 'reader-outline', activeIcon: 'reader', angle: -148 },
+  { route: 'thoughts', label: 'Thoughts', icon: 'reader-outline', activeIcon: 'reader', angle: ANGLE_FIRST },
   { route: 'index', label: 'Write', icon: 'create-outline', activeIcon: 'create', angle: -90 },
-  { route: 'collections', label: 'Collections', icon: 'albums-outline', activeIcon: 'albums', angle: -32 },
+  { route: 'collections', label: 'Collections', icon: 'albums-outline', activeIcon: 'albums', angle: -90 + ANGLE_STEP },
 ];
-
-const ANGLE_MIN = Math.min(...SECTIONS.map((s) => s.angle));
-const ANGLE_MAX = Math.max(...SECTIONS.map((s) => s.angle));
 
 // Geometry, in points. The box spans the screen width and sits on its bottom edge.
 const BOX_H = 360;
 const ORB_R = navigation.orbSize / 2;
 const ORB_CANVAS = navigation.orbSize + 40;
-const ARC_R = 164;
-const ARC_START = (ANGLE_MIN * Math.PI) / 180;
-const ARC_END = (ANGLE_MAX * Math.PI) / 180;
-const ARC_WIDTH = 1.2;
+const ARC_R = 168;
 const LOBE = 84;
-const LOBE_R = 34;
-const LOBE_GROW = 10;
-const HIT_R = 52;
+const LOBE_R = 33;
+const LOBE_GROW = 12;
+const BLOB_SMOOTHNESS = 30;
+// The finger "rides" the arc inside this band around it.
+const BAND_IN = 70;
+const BAND_OUT = 80;
+const BAND_ANGLE_PAD = 22;
 
 // A quick press without movement opens the menu and leaves it open for taps.
 const TAP_MS = 220;
@@ -91,6 +92,8 @@ const BLOB_EFFECT = (() => {
     return null;
   }
 })();
+
+const SECTION_COUNT = SECTIONS.length;
 
 function lobeProgress(progress: number, index: number) {
   'worklet';
@@ -275,32 +278,36 @@ export function OrbNavigator({ state, navigateToTab, insets }: TabBarProps) {
     },
     onUpdate: (event) => {
       'worklet';
-      const x = event.x + wrapLeft;
-      const y = event.y + wrapTop;
-      let hit = -1;
-      for (let i = 0; i < lobeX.length; i += 1) {
-        const dx = lobeX[i] - x;
-        const dy = lobeY[i] - y;
-        if (dx * dx + dy * dy < HIT_R * HIT_R) {
-          hit = i;
+      // Where along the arc the finger is: a continuous position, so the
+      // bubbles swell and shrink smoothly as it slides, like the wheel.
+      const vx = event.x + wrapLeft - orb.x;
+      const vy = event.y + wrapTop - orb.y;
+      const dist = Math.sqrt(vx * vx + vy * vy);
+      const angle = (Math.atan2(vy, vx) * 180) / Math.PI;
+      const last = SECTION_COUNT - 1;
+      const inBand =
+        dist > ARC_R - BAND_IN &&
+        dist < ARC_R + BAND_OUT &&
+        angle > ANGLE_FIRST - BAND_ANGLE_PAD &&
+        angle < ANGLE_FIRST + last * ANGLE_STEP + BAND_ANGLE_PAD;
+      if (!inBand) {
+        if (gIndex.value !== -1) {
+          focusAmount.set(withTiming(0, { duration: 120 }));
+          gIndex.set(-1);
         }
-      }
-      if (hit === gIndex.value) {
         return;
       }
-      if (hit === -1) {
-        focusAmount.set(withTiming(0, { duration: 120 }));
-      } else {
-        if (gIndex.value === -1) {
-          focusIndex.set(hit);
-        } else {
-          focusIndex.set(withSpring(hit, FOCUS_SPRING));
-        }
+      const position = Math.min(last, Math.max(0, (angle - ANGLE_FIRST) / ANGLE_STEP));
+      focusIndex.set(position);
+      const hit = Math.round(position);
+      if (gIndex.value === -1) {
         focusAmount.set(withSpring(1, FOCUS_SPRING));
         tapMode.set(withTiming(0, { duration: 120 }));
-        scheduleOnRN(haptic, 'select');
       }
-      gIndex.set(hit);
+      if (hit !== gIndex.value) {
+        scheduleOnRN(haptic, 'select');
+        gIndex.set(hit);
+      }
     },
     onFinalize: () => {
       'worklet';
@@ -322,10 +329,9 @@ export function OrbNavigator({ state, navigateToTab, insets }: TabBarProps) {
     },
   });
 
-  // Glass bubbles for the sections, linked to each other by a thin liquid arc.
+  // Glass bubbles for the sections, flowing into each other (not into the orb).
   const blobUniforms = useDerivedValue<Uniforms>(() => {
     const p = progress.value;
-    const ringIn = interpolate(p, [0.7, 1], [0, 1], 'clamp');
     const lobe = (i: number) => {
       const q = lobeProgress(p, i);
       const w = focusWeight(i, focusIndex.value, focusAmount.value);
@@ -345,12 +351,9 @@ export function OrbNavigator({ state, navigateToTab, insets }: TabBarProps) {
       c3: HIDDEN_CIRCLE,
       c4: HIDDEN_CIRCLE,
       c5: HIDDEN_CIRCLE,
-      smoothness: 1,
+      smoothness: BLOB_SMOOTHNESS,
       alpha: Math.min(1, p * 4),
-      ringCenter: [orb.x, orb.y],
-      ring: [ARC_R, ARC_START, ARC_END],
-      ringWidth: ARC_WIDTH * ringIn,
-      ringSmoothness: 16,
+      ...NO_RING,
     };
   });
 
@@ -364,7 +367,7 @@ export function OrbNavigator({ state, navigateToTab, insets }: TabBarProps) {
       opacity: 1 - hidden.value,
       transform: [
         { translateY: (ORB_R + 24) * hidden.value },
-        { scale: (1 + 0.03 * breath.value) * (1 + 0.07 * p) },
+        { scale: 1 + 0.03 * breath.value * p + 0.07 * p },
       ],
     };
   });
@@ -428,6 +431,7 @@ export function OrbNavigator({ state, navigateToTab, insets }: TabBarProps) {
               radius={ORB_R}
               screenX={wrapLeft}
               screenY={windowHeight - BOX_H + wrapTop}
+              activity={progress}
             />
           </Animated.View>
         </GestureDetector>

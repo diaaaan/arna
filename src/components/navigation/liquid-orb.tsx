@@ -1,26 +1,26 @@
 import { Canvas, Fill, Shader, Skia } from '@shopify/react-native-skia';
 import type { Uniforms } from '@shopify/react-native-skia';
-import { useEffect } from 'react';
 import {
-  Easing,
   useDerivedValue,
+  useFrameCallback,
   useReducedMotion,
   useSharedValue,
-  withRepeat,
-  withTiming,
+  type SharedValue,
 } from 'react-native-reanimated';
 
 import { SURFACE_EFFECT, surfaceUniforms } from '../surface-uniforms';
 
 // A round "liquid glass" orb. It refracts the Living Surface behind it: the
 // middle is slightly magnified, the rim bends the picture inward with a touch
-// of colour fringing, and the outline slowly wobbles like a drop.
+// of colour fringing. At rest it is a clean circle; while the user interacts
+// with it (activity > 0) the outline starts to wobble like a drop.
 const LIQUID_ORB_SOURCE = `
 uniform shader surface;
 uniform float2 center;
 uniform float2 screenOrigin;
 uniform float radius;
 uniform float time;
+uniform float wobble;
 uniform float alpha;
 
 half4 main(float2 p) {
@@ -28,11 +28,11 @@ half4 main(float2 p) {
   float len = length(v);
   float ang = atan(v.y, v.x);
   float t = time * 6.2831853;
-  float wobble = 1.0
-    + 0.022 * sin(3.0 * ang + t)
-    + 0.015 * sin(5.0 * ang - 2.0 * t)
-    + 0.010 * sin(2.0 * ang + 3.0 * t);
-  float R = radius * wobble;
+  float shape = 1.0 + wobble * (
+      0.026 * sin(3.0 * ang + t)
+    + 0.017 * sin(5.0 * ang - 2.0 * t)
+    + 0.012 * sin(2.0 * ang + 3.0 * t));
+  float R = radius * shape;
   float d = len - R;
   float inside = 1.0 - smoothstep(-0.9, 0.9, d);
   if (inside <= 0.0) {
@@ -85,21 +85,25 @@ type LiquidOrbProps = {
   screenX: number;
   screenY: number;
   radius: number;
+  // 0 = at rest (clean circle, no redraws), 1 = fully alive.
+  activity: SharedValue<number>;
 };
 
-export function LiquidOrb({ size, screenX, screenY, radius }: LiquidOrbProps) {
+const WOBBLE_PERIOD_MS = 4200;
+
+export function LiquidOrb({ size, screenX, screenY, radius, activity }: LiquidOrbProps) {
   const reduceMotion = useReducedMotion();
   const time = useSharedValue(0);
 
-  useEffect(() => {
-    if (reduceMotion) {
-      time.set(0);
+  // The drop only moves while it is being used.
+  useFrameCallback((frame) => {
+    'worklet';
+    if (reduceMotion || activity.value < 0.001) {
       return;
     }
-    time.set(
-      withRepeat(withTiming(1, { duration: 9000, easing: Easing.linear }), -1, false),
-    );
-  }, [reduceMotion, time]);
+    const dt = frame.timeSincePreviousFrame ?? 0;
+    time.set((time.get() + dt / WOBBLE_PERIOD_MS) % 1);
+  });
 
   const surface = useDerivedValue<Uniforms>(() => surfaceUniforms());
   const uniforms = useDerivedValue<Uniforms>(() => ({
@@ -107,6 +111,7 @@ export function LiquidOrb({ size, screenX, screenY, radius }: LiquidOrbProps) {
     screenOrigin: [screenX, screenY],
     radius,
     time: time.value,
+    wobble: reduceMotion ? 0 : Math.min(1, activity.value),
     alpha: 1,
   }));
 
