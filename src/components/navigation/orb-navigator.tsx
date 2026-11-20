@@ -36,8 +36,7 @@ import { scheduleOnRN } from 'react-native-worklets';
 
 import { surfaceSignal } from '../../theme/surface-signal';
 import { colors, navigation, surfaceReaction, typography } from '../../theme/tokens';
-import { GLASS_BLOB_SOURCE, HIDDEN_CIRCLE, NO_RING } from '../glass-blob';
-import { useOrbStyle } from '../../theme/orb-style';
+import { GLASS_BLOB_SOURCE, HIDDEN_CIRCLE } from '../glass-blob';
 import { OrbVisual } from './orb-visual';
 
 type TabBarProps = Parameters<
@@ -57,7 +56,7 @@ type Section = {
 
 // Left to right: all thoughts, writing in the middle, collections. The bubbles
 // sit close on an arc and flow into each other, like the collections wheel.
-const ANGLE_STEP = 34;
+const ANGLE_STEP = 42;
 const ANGLE_FIRST = -90 - ANGLE_STEP;
 const SECTIONS: readonly Section[] = [
   { route: 'thoughts', label: 'Thoughts', icon: 'reader-outline', activeIcon: 'reader', angle: ANGLE_FIRST },
@@ -69,11 +68,18 @@ const SECTIONS: readonly Section[] = [
 const BOX_H = 360;
 const ORB_R = navigation.orbSize / 2;
 const ORB_CANVAS = navigation.orbSize + 80;
-const ARC_R = 168;
+const ARC_R = 178;
 const LOBE = 84;
 const LOBE_R = 34;
 const LOBE_GROW = 12;
-const BLOB_SMOOTHNESS = 46;
+const BLOB_SMOOTHNESS = 30;
+// The bubbles are always linked by a liquid band along the arc, which grows
+// into each of them with a soft fillet.
+const LINK_WIDTH = 4;
+const LINK_SMOOTHNESS = 26;
+const LINK_START = ((ANGLE_FIRST) * Math.PI) / 180;
+const LINK_END = ((-90 + ANGLE_STEP) * Math.PI) / 180;
+
 // The finger "rides" the arc inside this band around it.
 const BAND_IN = 70;
 const BAND_OUT = 80;
@@ -120,9 +126,8 @@ function haptic(kind: 'press' | 'select' | 'go') {
 }
 
 export function OrbNavigator({ state, navigateToTab, insets }: TabBarProps) {
-  const { width, height: windowHeight } = useWindowDimensions();
+  const { width } = useWindowDimensions();
   const reduceMotion = useReducedMotion();
-  const orbLook = useOrbStyle();
   const [isOpen, setIsOpen] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const progress = useSharedValue(0);
@@ -334,6 +339,7 @@ export function OrbNavigator({ state, navigateToTab, insets }: TabBarProps) {
   // Glass bubbles for the sections, flowing into each other (not into the orb).
   const blobUniforms = useDerivedValue<Uniforms>(() => {
     const p = progress.value;
+    const linkIn = interpolate(p, [0.55, 1], [0, 1], 'clamp');
     const lobe = (i: number) => {
       const q = lobeProgress(p, i);
       const w = focusWeight(i, focusIndex.value, focusAmount.value);
@@ -355,7 +361,10 @@ export function OrbNavigator({ state, navigateToTab, insets }: TabBarProps) {
       c5: HIDDEN_CIRCLE,
       smoothness: BLOB_SMOOTHNESS,
       alpha: Math.min(1, p * 4),
-      ...NO_RING,
+      ringCenter: [orb.x, orb.y],
+      ring: [ARC_R, LINK_START, LINK_END],
+      ringWidth: LINK_WIDTH * linkIn,
+      ringSmoothness: LINK_SMOOTHNESS,
     };
   });
 
@@ -428,14 +437,7 @@ export function OrbNavigator({ state, navigateToTab, insets }: TabBarProps) {
               orbStyle,
             ]}
           >
-            <OrbVisual
-              variant={orbLook}
-              size={ORB_CANVAS}
-              radius={ORB_R}
-              screenX={wrapLeft}
-              screenY={windowHeight - BOX_H + wrapTop}
-              activity={progress}
-            />
+            <OrbVisual size={ORB_CANVAS} radius={ORB_R} activity={progress} />
           </Animated.View>
         </GestureDetector>
       </View>
