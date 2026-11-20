@@ -1,49 +1,20 @@
 import { useEffect } from 'react';
-import { Dimensions, StyleSheet } from 'react-native';
-import {
-  Blur,
-  Canvas,
-  Fill,
-  Rect,
-  Shader,
-  Skia,
-  vec,
-} from '@shopify/react-native-skia';
+import { StyleSheet } from 'react-native';
+import { Blur, Canvas, Fill, Rect, Shader } from '@shopify/react-native-skia';
 import type { Uniforms } from '@shopify/react-native-skia';
 import {
   useDerivedValue,
   useFrameCallback,
   useReducedMotion,
-  useSharedValue,
 } from 'react-native-reanimated';
 
-import {
-  colors,
-  smearPreset,
-  smearStyle,
-  surfaceReaction,
-  visual,
-} from '../theme/tokens';
+import { colors, smearPreset, surfaceReaction } from '../theme/tokens';
 import { surfaceSignal } from '../theme/surface-signal';
-import { SMEAR_SOURCE } from './living-surface-smear';
-
-const SCREEN_SIZE = Dimensions.get('screen');
-const RESOLUTION = vec(SCREEN_SIZE.width, SCREEN_SIZE.height);
-
-function compileShader(source: string) {
-  try {
-    return Skia.RuntimeEffect.Make(source);
-  } catch {
-    return null;
-  }
-}
-
-const SMEAR_EFFECT = compileShader(SMEAR_SOURCE);
+import { SURFACE_EFFECT, SURFACE_SIZE, surfaceUniforms } from './surface-uniforms';
 
 export function AmbientBackground() {
-  const motionPhase = useSharedValue<number>(smearPreset.reducedMotionPhase);
-  const slowPhase = useSharedValue<number>(0.2);
   const reduceMotion = useReducedMotion();
+  const { motionPhase, slowPhase } = surfaceSignal;
 
   // Phases advance frame by frame so the speed can change at any moment
   // without a jump. The shader only reads them through whole harmonics, so the
@@ -80,53 +51,16 @@ export function AmbientBackground() {
     };
   }, [frameCallback, motionPhase, slowPhase, reduceMotion]);
 
-  const active = smearStyle;
-  const focusDim = surfaceReaction.focusDim;
-  const sceneDim = surfaceReaction.sceneDim;
-
   const sceneBlur = surfaceReaction.sceneBlur;
   const blur = useDerivedValue(() => sceneBlur * surfaceSignal.scene.value);
-
-  const uniforms = useDerivedValue<Uniforms>(() => ({
-    resolution: RESOLUTION,
-    motionPhase: motionPhase.value,
-    backgroundColor: visual.livingSurface.background,
-    s0: active.stops[0],
-    s1: active.stops[1],
-    s2: active.stops[2],
-    s3: active.stops[3],
-    s4: active.stops[4],
-    s5: active.stops[5],
-    s6: active.stops[6],
-    s7: active.stops[7],
-    noiseScale: smearPreset.noiseScale,
-    warpStrength: smearPreset.warpStrength,
-    orbitRadius: smearPreset.orbitRadius,
-    grainAmount: active.grainAmount,
-    glowAmount: active.glowAmount,
-    cycleAmount: smearPreset.cycleAmount,
-    textureAmount: active.textureAmount,
-    tonePower: active.tonePower,
-    mode: surfaceSignal.mode.value,
-    slowPhase: slowPhase.value,
-    // Typing and text-heavy screens both calm the surface; combine them.
-    focusDim:
-      1 -
-      (1 - focusDim * surfaceSignal.focus.value) *
-        (1 - sceneDim * surfaceSignal.scene.value),
-  }));
+  const uniforms = useDerivedValue<Uniforms>(() => surfaceUniforms());
 
   return (
     <Canvas pointerEvents="none" style={styles.canvas}>
       <Fill color={colors.background} />
-      {SMEAR_EFFECT ? (
-        <Rect
-          x={0}
-          y={0}
-          width={SCREEN_SIZE.width}
-          height={SCREEN_SIZE.height}
-        >
-          <Shader source={SMEAR_EFFECT} uniforms={uniforms} />
+      {SURFACE_EFFECT ? (
+        <Rect x={0} y={0} width={SURFACE_SIZE.width} height={SURFACE_SIZE.height}>
+          <Shader source={SURFACE_EFFECT} uniforms={uniforms} />
           <Blur blur={blur} mode="clamp" />
         </Rect>
       ) : null}
@@ -139,7 +73,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 0,
     left: 0,
-    width: SCREEN_SIZE.width,
-    height: SCREEN_SIZE.height,
+    width: SURFACE_SIZE.width,
+    height: SURFACE_SIZE.height,
   },
 });

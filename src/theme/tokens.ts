@@ -343,8 +343,7 @@ export const navigation = {
   // half tucked under the bottom edge of the screen.
   tabBarHeight: 72,
   tabBarBottomInset: 0,
-  orbSize: 124,
-  orbWidth: 184,
+  orbSize: 132,
 } as const;
 
 export const shadows = {

@@ -2,8 +2,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { Canvas, Fill, Shader, Skia } from '@shopify/react-native-skia';
 import type { Uniforms } from '@shopify/react-native-skia';
 import * as Haptics from 'expo-haptics';
-import { useEffect, useRef, type ComponentProps } from 'react';
-import { StyleSheet, View, type GestureResponderEvent } from 'react-native';
+import { useEffect, type ComponentProps } from 'react';
+import { StyleSheet, View } from 'react-native';
+import { GestureDetector, usePanGesture } from 'react-native-gesture-handler';
 import Animated, {
   useAnimatedStyle,
   useDerivedValue,
@@ -11,13 +12,16 @@ import Animated, {
   withSpring,
   type SharedValue,
 } from 'react-native-reanimated';
+import { scheduleOnRN } from 'react-native-worklets';
 
 import { GLASS_BLOB_SOURCE, HIDDEN_CIRCLE, NO_RING } from '../../components/glass-blob';
 import { colors, typography } from '../../theme/tokens';
 
 // Vertical wheel of collections at the right edge, in the same glass-bubble
 // style as the orb menu. Drag anywhere in the lower right strip of the screen
-// (thumb reach) to turn it; it swells a little while it is held.
+// (thumb reach) to turn it; it swells a little while it is held and shows the
+// name of the bubble under focus to the left, away from the thumb. The
+// gesture runs on the UI thread; the collection switches when the finger lifts.
 
 export type CategoryWheelItem = {
   id: string;
@@ -48,7 +52,6 @@ const HOLD_GROW = 4;
 // The touch strip covers the lower part of the area.
 const ZONE_TOP_FRACTION = 0.3;
 const CENTER_FRACTION = 0.62;
-const TAP_SLOP = 8;
 
 const BLOB_EFFECT = (() => {
   try {
@@ -88,73 +91,71 @@ export function CategoryWheel({ items, selectedId, onSelect, height }: CategoryW
   const centerY = height * CENTER_FRACTION;
   const zoneTop = height * ZONE_TOP_FRACTION;
 
-  const drag = useRef({ startY: 0, startOffset: 0, moved: false, index: selectedIndex, active: false });
+  const gStartOffset = useSharedValue(0);
+  const gIndex = useSharedValue(selectedIndex);
+  const gActive = useSharedValue(false);
+  const dragging = useSharedValue(false);
 
   // Follow selection changes that come from elsewhere.
   useEffect(() => {
-    if (!drag.current.active) {
-      offset.set(withSpring(selectedIndex, { damping: 18, stiffness: 180 }));
-      drag.current.index = selectedIndex;
+    if (!dragging.value) {
+      offset.set(withSpring(selectedIndex, { damping: 18, stiffness: 220 }));
+      gIndex.set(selectedIndex);
     }
-  }, [offset, selectedIndex]);
+  }, [dragging, gIndex, offset, selectedIndex]);
 
   const choose = (index: number) => {
     const item = items[index];
     if (item && item.id !== selectedId) {
-      tick();
       onSelect(item.id);
     }
   };
 
-  const onGrant = (event: GestureResponderEvent) => {
-    drag.current = {
-      startY: event.nativeEvent.pageY,
-      startOffset: offset.get(),
-      moved: false,
-      index: Math.round(offset.get()),
-      active: true,
-    };
-    held.set(withSpring(1, { damping: 14, stiffness: 220 }));
-  };
-
-  const onMove = (event: GestureResponderEvent) => {
-    const g = drag.current;
-    const dy = event.nativeEvent.pageY - g.startY;
-    if (Math.abs(dy) > TAP_SLOP) {
-      g.moved = true;
-    }
-    if (!g.moved) {
-      return;
-    }
-    const next = Math.min(
-      count - 0.55,
-      Math.max(-0.45, g.startOffset - dy / SPACING_HELD),
-    );
-    offset.set(next);
-    const index = Math.min(count - 1, Math.max(0, Math.round(next)));
-    if (index !== g.index) {
-      g.index = index;
-      choose(index);
-    }
-  };
-
-  const onRelease = (event: GestureResponderEvent) => {
-    const g = drag.current;
-    g.active = false;
-    held.set(withSpring(0, { damping: 16, stiffness: 180 }));
-    let index = g.index;
-    if (!g.moved) {
-      // A tap: pick the bubble at that height.
-      const y = event.nativeEvent.locationY + zoneTop;
-      index = Math.min(
-        count - 1,
-        Math.max(0, Math.round(offset.get() + (y - centerY) / SPACING)),
+  const pan = usePanGesture({
+    minDistance: 4,
+    onBegin: () => {
+      'worklet';
+      dragging.set(true);
+      gActive.set(false);
+      gStartOffset.set(offset.value);
+      held.set(withSpring(1, { damping: 14, stiffness: 260 }));
+    },
+    onActivate: () => {
+      'worklet';
+      gActive.set(true);
+    },
+    onUpdate: (event) => {
+      'worklet';
+      const next = Math.min(
+        count - 0.55,
+        Math.max(-0.45, gStartOffset.value - event.translationY / SPACING_HELD),
       );
-      choose(index);
-    }
-    g.index = index;
-    offset.set(withSpring(index, { damping: 18, stiffness: 200 }));
-  };
+      offset.set(next);
+      const index = Math.min(count - 1, Math.max(0, Math.round(next)));
+      if (index !== gIndex.value) {
+        gIndex.set(index);
+        scheduleOnRN(tick);
+      }
+    },
+    onFinalize: (event) => {
+      'worklet';
+      dragging.set(false);
+      held.set(withSpring(0, { damping: 16, stiffness: 220 }));
+      let index = gIndex.value;
+      if (!gActive.value) {
+        // A tap: pick the bubble at that height.
+        const y = event.y + zoneTop;
+        index = Math.min(
+          count - 1,
+          Math.max(0, Math.round(offset.value + (y - centerY) / SPACING)),
+        );
+        scheduleOnRN(tick);
+      }
+      gIndex.set(index);
+      offset.set(withSpring(index, { damping: 18, stiffness: 240 }));
+      scheduleOnRN(choose, index);
+    },
+  });
 
   const uniforms = useDerivedValue<Uniforms>(() => {
     const slots = [];
@@ -202,24 +203,19 @@ export function CategoryWheel({ items, selectedId, onSelect, height }: CategoryW
         />
       ))}
 
-      <View
-        accessible
-        accessibilityRole="adjustable"
-        accessibilityLabel={`Collection: ${items[selectedIndex]?.label ?? ''}`}
-        accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
-        onAccessibilityAction={(event) => {
-          const step = event.nativeEvent.actionName === 'increment' ? 1 : -1;
-          choose(Math.min(count - 1, Math.max(0, selectedIndex + step)));
-        }}
-        style={[styles.zone, { top: zoneTop }]}
-        onStartShouldSetResponder={() => true}
-        onMoveShouldSetResponder={() => true}
-        onResponderTerminationRequest={() => false}
-        onResponderGrant={onGrant}
-        onResponderMove={onMove}
-        onResponderRelease={onRelease}
-        onResponderTerminate={onRelease}
-      />
+      <GestureDetector gesture={pan}>
+        <View
+          accessible
+          accessibilityRole="adjustable"
+          accessibilityLabel={`Collection: ${items[selectedIndex]?.label ?? ''}`}
+          accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
+          onAccessibilityAction={(event) => {
+            const step = event.nativeEvent.actionName === 'increment' ? 1 : -1;
+            choose(Math.min(count - 1, Math.max(0, selectedIndex + step)));
+          }}
+          style={[styles.zone, { top: zoneTop }]}
+        />
+      </GestureDetector>
     </View>
   );
 }
@@ -248,17 +244,24 @@ function WheelIcon({ item, index, selected, offset, held, centerY }: WheelIconPr
     };
   });
 
-  // The label of the centered bubble shows while the wheel is held.
+  // The name of the bubble under focus pops out to the left while the wheel is
+  // held, away from the thumb.
   const labelStyle = useAnimatedStyle(() => {
-    const near = Math.max(0, 1 - Math.abs(index - offset.value) * 1.6);
-    return { opacity: near * held.value };
+    const near = Math.max(0, 1 - Math.abs(index - offset.value) * 1.8);
+    const show = near * held.value;
+    return {
+      opacity: show,
+      transform: [{ translateX: 10 * (1 - show) }, { scale: 0.9 + 0.1 * show }],
+    };
   });
 
   return (
     <Animated.View pointerEvents="none" style={[styles.iconBox, style]}>
-      <Animated.Text numberOfLines={1} style={[styles.label, labelStyle]}>
-        {item.label}
-      </Animated.Text>
+      <Animated.View style={[styles.labelWrap, labelStyle]}>
+        <Animated.Text numberOfLines={1} style={styles.label}>
+          {item.label}
+        </Animated.Text>
+      </Animated.View>
       <Ionicons
         name={item.icon}
         size={20}
@@ -296,10 +299,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  labelWrap: {
+    position: 'absolute',
+    right: ICON_BOX / 2 + R_CENTER + HOLD_GROW + 12,
+  },
   label: {
     ...typography.navigationLabel,
-    position: 'absolute',
-    right: ICON_BOX / 2 + 34,
+    fontSize: 13,
     color: colors.textPrimary,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(19, 18, 27, 0.86)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255, 255, 255, 0.18)',
   },
 });

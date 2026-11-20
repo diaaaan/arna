@@ -1,14 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import {
-  Blur,
-  Canvas,
-  Fill,
-  LinearGradient,
-  Oval,
-  Shader,
-  Skia,
-  vec,
-} from '@shopify/react-native-skia';
+import { Canvas, Fill, Shader, Skia } from '@shopify/react-native-skia';
 import type { Uniforms } from '@shopify/react-native-skia';
 import * as Haptics from 'expo-haptics';
 import type { Tabs } from 'expo-router';
@@ -16,7 +7,6 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type ComponentProps,
 } from 'react';
@@ -25,11 +15,10 @@ import {
   Keyboard,
   Pressable,
   StyleSheet,
-  Text,
   useWindowDimensions,
   View,
-  type GestureResponderEvent,
 } from 'react-native';
+import { GestureDetector, usePanGesture } from 'react-native-gesture-handler';
 import Animated, {
   Easing,
   interpolate,
@@ -43,10 +32,12 @@ import Animated, {
   withTiming,
   type SharedValue,
 } from 'react-native-reanimated';
+import { scheduleOnRN } from 'react-native-worklets';
 
 import { surfaceSignal } from '../../theme/surface-signal';
 import { colors, navigation, surfaceReaction, typography } from '../../theme/tokens';
 import { GLASS_BLOB_SOURCE, HIDDEN_CIRCLE } from '../glass-blob';
+import { LiquidOrb } from './liquid-orb';
 
 type TabBarProps = Parameters<
   NonNullable<ComponentProps<typeof Tabs>['tabBar']>
@@ -70,34 +61,28 @@ const SECTIONS: readonly Section[] = [
   { route: 'collections', label: 'Collections', icon: 'albums-outline', activeIcon: 'albums', angle: -32 },
 ];
 
-const SECTIONS_ANGLES_MIN = Math.min(...SECTIONS.map((s) => s.angle));
-const SECTIONS_ANGLES_MAX = Math.max(...SECTIONS.map((s) => s.angle));
+const ANGLE_MIN = Math.min(...SECTIONS.map((s) => s.angle));
+const ANGLE_MAX = Math.max(...SECTIONS.map((s) => s.angle));
 
 // Geometry, in points. The box spans the screen width and sits on its bottom edge.
-const BOX_H = 350;
-// The orb is an oval, wider than tall.
-const ORB_RX = navigation.orbWidth / 2;
-const ORB_RY = navigation.orbSize / 2;
-const ORB_CANVAS_W = navigation.orbWidth + 70;
-const ORB_CANVAS_H = navigation.orbSize + 70;
-const ARC_R = 162;
-const LOBE = 84;
-const LOBE_R = 40;
-const LOBE_GROW = 10;
-const HIT_R = 50;
-// The linking arc runs between the outer sections.
-const ARC_START = (SECTIONS_ANGLES_MIN * Math.PI) / 180;
-const ARC_END = (SECTIONS_ANGLES_MAX * Math.PI) / 180;
+const BOX_H = 360;
+const ORB_R = navigation.orbSize / 2;
+const ORB_CANVAS = navigation.orbSize + 40;
+const ARC_R = 164;
+const ARC_START = (ANGLE_MIN * Math.PI) / 180;
+const ARC_END = (ANGLE_MAX * Math.PI) / 180;
 const ARC_WIDTH = 1.2;
+const LOBE = 84;
+const LOBE_R = 34;
+const LOBE_GROW = 10;
+const HIT_R = 52;
 
 // A quick press without movement opens the menu and leaves it open for taps.
 const TAP_MS = 220;
-const TAP_SLOP = 10;
 
-
-const OPEN_SPRING = { damping: 17, stiffness: 180, mass: 0.85 };
-const FOCUS_SPRING = { damping: 18, stiffness: 260 };
-const CLOSE_TIMING = { duration: 220, easing: Easing.in(Easing.cubic) };
+const OPEN_SPRING = { damping: 17, stiffness: 220, mass: 0.8 };
+const FOCUS_SPRING = { damping: 20, stiffness: 380 };
+const CLOSE_TIMING = { duration: 200, easing: Easing.in(Easing.cubic) };
 
 const BLOB_EFFECT = (() => {
   try {
@@ -109,8 +94,13 @@ const BLOB_EFFECT = (() => {
 
 function lobeProgress(progress: number, index: number) {
   'worklet';
-  const delay = 0.08 * (index + 1);
+  const delay = 0.06 * (index + 1);
   return Math.max(0, (progress - delay) / (1 - delay));
+}
+
+function focusWeight(index: number, focusIndex: number, focusAmount: number) {
+  'worklet';
+  return focusAmount * Math.max(0, 1 - Math.abs(focusIndex - index));
 }
 
 function haptic(kind: 'press' | 'select' | 'go') {
@@ -126,16 +116,24 @@ function haptic(kind: 'press' | 'select' | 'go') {
 }
 
 export function OrbNavigator({ state, navigateToTab, insets }: TabBarProps) {
-  const { width } = useWindowDimensions();
+  const { width, height: windowHeight } = useWindowDimensions();
   const reduceMotion = useReducedMotion();
   const [isOpen, setIsOpen] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const progress = useSharedValue(0);
-  // Which section the finger is over, and how much (0 = none).
+  // Which section the finger is over (focusAmount 0 = none).
   const focusIndex = useSharedValue(0);
   const focusAmount = useSharedValue(0);
+  // 1 when the menu was opened with a tap: labels show for all sections.
+  const tapMode = useSharedValue(0);
   const hidden = useSharedValue(0);
   const breath = useSharedValue(0);
+  // Gesture bookkeeping, on the UI thread.
+  const gStart = useSharedValue(0);
+  const gWasOpen = useSharedValue(false);
+  const gActive = useSharedValue(false);
+  const gIndex = useSharedValue(-1);
+  const openShared = useSharedValue(false);
 
   const activeRoute = state.routes[state.index]?.name;
   const activeIndex = Math.max(
@@ -159,7 +157,10 @@ export function OrbNavigator({ state, navigateToTab, insets }: TabBarProps) {
       }),
     [orb],
   );
-
+  const lobeX = lobes.map((l) => l.x);
+  const lobeY = lobes.map((l) => l.y);
+  const wrapLeft = orb.x - ORB_CANVAS / 2;
+  const wrapTop = orb.y - ORB_CANVAS / 2;
 
   // The living surface only moves on the capture screen.
   useEffect(() => {
@@ -204,19 +205,26 @@ export function OrbNavigator({ state, navigateToTab, insets }: TabBarProps) {
 
   const close = useCallback(() => {
     setIsOpen(false);
-    focusAmount.set(withTiming(0, { duration: 160 }));
+    openShared.set(false);
+    tapMode.set(withTiming(0, { duration: 150 }));
+    focusAmount.set(withTiming(0, { duration: 150 }));
     progress.set(withTiming(0, CLOSE_TIMING));
-  }, [focusAmount, progress]);
+  }, [focusAmount, openShared, progress, tapMode]);
 
-  const open = useCallback(() => {
+  const markOpen = useCallback(() => {
     Keyboard.dismiss();
     setIsOpen(true);
-    focusAmount.set(0);
+    haptic('press');
+  }, []);
+
+  const openWithTap = useCallback(() => {
+    markOpen();
+    openShared.set(true);
+    tapMode.set(withTiming(1, { duration: 200 }));
     progress.set(
       reduceMotion ? withTiming(1, { duration: 160 }) : withSpring(1, OPEN_SPRING),
     );
-    haptic('press');
-  }, [focusAmount, progress, reduceMotion]);
+  }, [markOpen, openShared, progress, reduceMotion, tapMode]);
 
   const goTo = useCallback(
     (index: number) => {
@@ -243,109 +251,94 @@ export function OrbNavigator({ state, navigateToTab, insets }: TabBarProps) {
   }, [close, isOpen]);
 
   // Press and hold the orb, move the finger onto a section, release to go.
-  // Releasing anywhere else (including on the orb itself) keeps the screen.
-  const gesture = useRef({
-    startedAt: 0,
-    startX: 0,
-    startY: 0,
-    // Box origin in window coordinates, measured at touch start.
-    originX: 0,
-    originY: 0,
-    wasOpen: false,
-    moved: false,
-    index: -1,
+  // Releasing anywhere else (the orb itself included) keeps the screen.
+  // Runs on the UI thread so the menu follows the finger without lag.
+  const pan = usePanGesture({
+    minDistance: 6,
+    onBegin: () => {
+      'worklet';
+      gStart.set(Date.now());
+      gWasOpen.set(openShared.value);
+      gActive.set(false);
+      gIndex.set(-1);
+      if (!openShared.value) {
+        openShared.set(true);
+        tapMode.set(0);
+        focusAmount.set(0);
+        progress.set(withSpring(1, OPEN_SPRING));
+        scheduleOnRN(markOpen);
+      }
+    },
+    onActivate: () => {
+      'worklet';
+      gActive.set(true);
+    },
+    onUpdate: (event) => {
+      'worklet';
+      const x = event.x + wrapLeft;
+      const y = event.y + wrapTop;
+      let hit = -1;
+      for (let i = 0; i < lobeX.length; i += 1) {
+        const dx = lobeX[i] - x;
+        const dy = lobeY[i] - y;
+        if (dx * dx + dy * dy < HIT_R * HIT_R) {
+          hit = i;
+        }
+      }
+      if (hit === gIndex.value) {
+        return;
+      }
+      if (hit === -1) {
+        focusAmount.set(withTiming(0, { duration: 120 }));
+      } else {
+        if (gIndex.value === -1) {
+          focusIndex.set(hit);
+        } else {
+          focusIndex.set(withSpring(hit, FOCUS_SPRING));
+        }
+        focusAmount.set(withSpring(1, FOCUS_SPRING));
+        tapMode.set(withTiming(0, { duration: 120 }));
+        scheduleOnRN(haptic, 'select');
+      }
+      gIndex.set(hit);
+    },
+    onFinalize: () => {
+      'worklet';
+      const quick = Date.now() - gStart.value < TAP_MS;
+      if (!gActive.value && quick) {
+        // A tap: keep the menu open for a tap on a section, or close it.
+        if (gWasOpen.value) {
+          scheduleOnRN(close);
+        } else {
+          tapMode.set(withTiming(1, { duration: 200 }));
+        }
+        return;
+      }
+      if (gIndex.value === -1) {
+        scheduleOnRN(close);
+      } else {
+        scheduleOnRN(goTo, gIndex.value);
+      }
+    },
   });
 
-  const onGrant = (event: GestureResponderEvent) => {
-    const { pageX, pageY, locationX, locationY } = event.nativeEvent;
-    gesture.current = {
-      startedAt: Date.now(),
-      startX: pageX,
-      startY: pageY,
-      originX: pageX - locationX - (orb.x - ORB_CANVAS_W / 2),
-      originY: pageY - locationY - (orb.y - ORB_CANVAS_H / 2),
-      wasOpen: isOpen,
-      moved: false,
-      index: -1,
-    };
-    if (!isOpen) {
-      open();
-    }
-  };
-
-  const onMove = (event: GestureResponderEvent) => {
-    const { pageX, pageY } = event.nativeEvent;
-    const g = gesture.current;
-    if (
-      Math.abs(pageX - g.startX) > TAP_SLOP ||
-      Math.abs(pageY - g.startY) > TAP_SLOP
-    ) {
-      g.moved = true;
-    }
-    const x = pageX - g.originX;
-    const y = pageY - g.originY;
-    let hit = -1;
-    lobes.forEach((lobe, i) => {
-      if (Math.hypot(lobe.x - x, lobe.y - y) < HIT_R) {
-        hit = i;
-      }
-    });
-    if (hit === g.index) {
-      return;
-    }
-    if (hit === -1) {
-      focusAmount.set(withTiming(0, { duration: 140 }));
-    } else {
-      if (g.index === -1) {
-        focusIndex.set(hit);
-      } else {
-        focusIndex.set(withSpring(hit, FOCUS_SPRING));
-      }
-      focusAmount.set(withSpring(1, FOCUS_SPRING));
-      haptic('select');
-    }
-    g.index = hit;
-  };
-
-  const onRelease = () => {
-    const g = gesture.current;
-    const quick = Date.now() - g.startedAt < TAP_MS;
-    if (!g.moved && quick) {
-      // A tap: stay open for a tap on a section, or close if it was open.
-      if (g.wasOpen) {
-        close();
-      }
-      return;
-    }
-    if (g.index === -1) {
-      close();
-      return;
-    }
-    goTo(g.index);
-  };
-
-  // Glass bubbles: a core around the orb and one bubble per section, merged
-  // like metaballs; the bubble under the finger swells.
+  // Glass bubbles for the sections, linked to each other by a thin liquid arc.
   const blobUniforms = useDerivedValue<Uniforms>(() => {
     const p = progress.value;
-    // The link grows once the bubbles have settled on the arc.
-    const ringIn = interpolate(p, [0.75, 1], [0, 1], 'clamp');
+    const ringIn = interpolate(p, [0.7, 1], [0, 1], 'clamp');
     const lobe = (i: number) => {
       const q = lobeProgress(p, i);
-      const target = lobes[i];
-      const w =
-        focusAmount.value * Math.max(0, 1 - Math.abs(focusIndex.value - i));
+      const w = focusWeight(i, focusIndex.value, focusAmount.value);
       const r = LOBE_R + LOBE_GROW * w;
-      const startR = ORB_RY * 0.6;
+      const startR = ORB_R * 0.5;
       return [
-        orb.x + (target.x - orb.x) * q,
-        orb.y + (target.y - orb.y) * q,
+        orb.x + (lobeX[i] - orb.x) * q,
+        orb.y + (lobeY[i] - orb.y) * q,
         startR + (r - startR) * Math.min(q, 1.06),
       ];
     };
     return {
       size: [width, BOX_H],
-      // The sections link to each other through a thin arc, not to the orb.
       c0: lobe(0),
       c1: lobe(1),
       c2: lobe(2),
@@ -370,19 +363,11 @@ export function OrbNavigator({ state, navigateToTab, insets }: TabBarProps) {
     return {
       opacity: 1 - hidden.value,
       transform: [
-        { translateY: (ORB_RY + 24) * hidden.value },
-        { scale: (1 + 0.025 * breath.value) * (1 + 0.06 * p) },
+        { translateY: (ORB_R + 24) * hidden.value },
+        { scale: (1 + 0.03 * breath.value) * (1 + 0.07 * p) },
       ],
     };
   });
-
-  const hintStyle = useAnimatedStyle(() => ({
-    opacity:
-      interpolate(progress.value, [0.6, 1], [0, 1], 'clamp') *
-      (1 - focusAmount.value),
-  }));
-
-  const topLobe = lobes[1];
 
   return (
     <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
@@ -399,20 +384,13 @@ export function OrbNavigator({ state, navigateToTab, insets }: TabBarProps) {
       </Animated.View>
 
       <View pointerEvents="box-none" style={[styles.box, { width }]}>
-        <Canvas pointerEvents="none" style={[styles.canvas, { width }]}>
-          {BLOB_EFFECT ? (
+        {BLOB_EFFECT ? (
+          <Canvas pointerEvents="none" style={[styles.canvas, { width }]}>
             <Fill>
               <Shader source={BLOB_EFFECT} uniforms={blobUniforms} />
             </Fill>
-          ) : null}
-        </Canvas>
-
-        <Animated.Text
-          pointerEvents="none"
-          style={[styles.hint, { top: topLobe.y - LOBE / 2 - 24, width }, hintStyle]}
-        >
-          Slide to a section
-        </Animated.Text>
+          </Canvas>
+        ) : null}
 
         {SECTIONS.map((section, index) => (
           <Lobe
@@ -426,74 +404,33 @@ export function OrbNavigator({ state, navigateToTab, insets }: TabBarProps) {
             progress={progress}
             focusIndex={focusIndex}
             focusAmount={focusAmount}
+            tapMode={tapMode}
             onPress={goTo}
           />
         ))}
 
-        <Animated.View
-          pointerEvents={keyboardVisible ? 'none' : 'auto'}
-          accessible
-          accessibilityRole="button"
-          accessibilityLabel={`Sections. Current: ${SECTIONS[activeIndex].label}`}
-          accessibilityHint="Opens the section switcher"
-          onAccessibilityTap={() => (isOpen ? close() : open())}
-          style={[
-            styles.orbWrap,
-            {
-              left: orb.x - ORB_CANVAS_W / 2,
-              top: orb.y - ORB_CANVAS_H / 2,
-              width: ORB_CANVAS_W,
-              height: ORB_CANVAS_H,
-            },
-            orbStyle,
-          ]}
-          onStartShouldSetResponder={() => true}
-          onMoveShouldSetResponder={() => true}
-          onResponderTerminationRequest={() => false}
-          onResponderGrant={onGrant}
-          onResponderMove={onMove}
-          onResponderRelease={onRelease}
-          onResponderTerminate={close}
-        >
-          <Canvas pointerEvents="none" style={styles.orbCanvas}>
-            {/* A translucent glass oval, same material as the bubbles. */}
-            <Oval
-              x={ORB_CANVAS_W / 2 - ORB_RX}
-              y={ORB_CANVAS_H / 2 - ORB_RY}
-              width={ORB_RX * 2}
-              height={ORB_RY * 2}
-            >
-              <LinearGradient
-                start={vec(0, ORB_CANVAS_H / 2 - ORB_RY)}
-                end={vec(0, ORB_CANVAS_H / 2 + ORB_RY)}
-                colors={['rgba(78, 70, 116, 0.62)', 'rgba(26, 24, 40, 0.62)']}
-              />
-            </Oval>
-            <Oval
-              x={ORB_CANVAS_W / 2 - ORB_RX * 0.62}
-              y={ORB_CANVAS_H / 2 - ORB_RY * 0.86}
-              width={ORB_RX * 1.24}
-              height={ORB_RY * 0.7}
-              color="rgba(255, 255, 255, 0.07)"
-            >
-              <Blur blur={10} />
-            </Oval>
-            <Oval
-              x={ORB_CANVAS_W / 2 - ORB_RX + 0.75}
-              y={ORB_CANVAS_H / 2 - ORB_RY + 0.75}
-              width={ORB_RX * 2 - 1.5}
-              height={ORB_RY * 2 - 1.5}
-              style="stroke"
-              strokeWidth={1.2}
-            >
-              <LinearGradient
-                start={vec(0, ORB_CANVAS_H / 2 - ORB_RY)}
-                end={vec(0, ORB_CANVAS_H / 2 + ORB_RY * 0.2)}
-                colors={['rgba(255, 255, 255, 0.55)', 'rgba(255, 255, 255, 0.06)']}
-              />
-            </Oval>
-          </Canvas>
-        </Animated.View>
+        <GestureDetector gesture={pan}>
+          <Animated.View
+            pointerEvents={keyboardVisible ? 'none' : 'auto'}
+            accessible
+            accessibilityRole="button"
+            accessibilityLabel={`Sections. Current: ${SECTIONS[activeIndex].label}`}
+            accessibilityHint="Opens the section switcher"
+            onAccessibilityTap={() => (isOpen ? close() : openWithTap())}
+            style={[
+              styles.orbWrap,
+              { left: wrapLeft, top: wrapTop },
+              orbStyle,
+            ]}
+          >
+            <LiquidOrb
+              size={ORB_CANVAS}
+              radius={ORB_R}
+              screenX={wrapLeft}
+              screenY={windowHeight - BOX_H + wrapTop}
+            />
+          </Animated.View>
+        </GestureDetector>
       </View>
     </View>
   );
@@ -509,6 +446,7 @@ type LobeProps = {
   progress: SharedValue<number>;
   focusIndex: SharedValue<number>;
   focusAmount: SharedValue<number>;
+  tapMode: SharedValue<number>;
   onPress: (index: number) => void;
 };
 
@@ -522,20 +460,32 @@ function Lobe({
   progress,
   focusIndex,
   focusAmount,
+  tapMode,
   onPress,
 }: LobeProps) {
   const style = useAnimatedStyle(() => {
     const q = lobeProgress(progress.value, index);
     const appear = interpolate(q, [0.35, 1], [0, 1], 'clamp');
     const rest = 1 - Math.min(q, 1);
-    const w = focusAmount.value * Math.max(0, 1 - Math.abs(focusIndex.value - index));
+    const w = focusWeight(index, focusIndex.value, focusAmount.value);
     return {
-      opacity: appear * (0.72 + 0.28 * w),
+      opacity: appear * (0.75 + 0.25 * w),
       transform: [
         { translateX: (origin.x - position.x) * rest },
         { translateY: (origin.y - position.y) * rest },
-        { scale: (0.6 + 0.4 * appear) * (1 + 0.12 * w) },
+        { scale: (0.6 + 0.4 * appear) * (1 + 0.14 * w) },
       ],
+    };
+  });
+
+  // The name pops out above the bubble, so it stays visible beside the finger.
+  const labelStyle = useAnimatedStyle(() => {
+    const w = focusWeight(index, focusIndex.value, focusAmount.value);
+    const appear = interpolate(lobeProgress(progress.value, index), [0.6, 1], [0, 1], 'clamp');
+    const show = Math.max(w, tapMode.value * 0.85) * appear;
+    return {
+      opacity: show,
+      transform: [{ translateY: 8 * (1 - show) - 10 * w }, { scale: 0.9 + 0.1 * show }],
     };
   });
 
@@ -548,6 +498,9 @@ function Lobe({
         style,
       ]}
     >
+      <Animated.View pointerEvents="none" style={[styles.labelWrap, labelStyle]}>
+        <Animated.Text style={styles.label}>{section.label}</Animated.Text>
+      </Animated.View>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={section.label}
@@ -557,12 +510,9 @@ function Lobe({
       >
         <Ionicons
           name={active ? section.activeIcon : section.icon}
-          size={26}
-          color={colors.textPrimary}
+          size={24}
+          color={active ? colors.textPrimary : colors.textSecondary}
         />
-        <Text style={[styles.lobeLabel, active && styles.lobeLabelActive]}>
-          {section.label}
-        </Text>
       </Pressable>
     </Animated.View>
   );
@@ -584,16 +534,6 @@ const styles = StyleSheet.create({
     top: 0,
     height: BOX_H,
   },
-  hint: {
-    ...typography.navigationLabel,
-    position: 'absolute',
-    left: 0,
-    fontSize: 10,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    textAlign: 'center',
-    color: 'rgba(189, 188, 207, 0.55)',
-  },
   lobe: {
     position: 'absolute',
     width: LOBE,
@@ -603,19 +543,28 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 5,
   },
-  lobeLabel: {
+  labelWrap: {
+    position: 'absolute',
+    left: -40,
+    right: -40,
+    bottom: LOBE / 2 + LOBE_R + 6,
+    alignItems: 'center',
+  },
+  label: {
     ...typography.navigationLabel,
-    color: colors.textSecondary,
-  },
-  lobeLabelActive: {
     color: colors.textPrimary,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 999,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(19, 18, 27, 0.82)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255, 255, 255, 0.18)',
   },
   orbWrap: {
     position: 'absolute',
-  },
-  orbCanvas: {
-    flex: 1,
+    width: ORB_CANVAS,
+    height: ORB_CANVAS,
   },
 });
