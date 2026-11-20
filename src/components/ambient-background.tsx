@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { Dimensions, StyleSheet } from 'react-native';
 import {
+  Blur,
   Canvas,
   Fill,
   Rect,
@@ -53,7 +54,13 @@ export function AmbientBackground() {
   const frameCallback = useFrameCallback((frame) => {
     'worklet';
     const dt = frame.timeSincePreviousFrame ?? 0;
-    const speed = 1 - focusSlowdown * surfaceSignal.focus.value;
+    // Other sections freeze the surface; it only lives on the capture screen.
+    const speed =
+      (1 - focusSlowdown * surfaceSignal.focus.value) *
+      (1 - surfaceSignal.scene.value);
+    if (speed < 0.002) {
+      return;
+    }
     motionPhase.set((motionPhase.get() + (dt / motionDuration) * speed) % 1);
     slowPhase.set((slowPhase.get() + (dt / lavaDuration) * speed) % 1);
   }, false);
@@ -76,6 +83,9 @@ export function AmbientBackground() {
   const active = smearStyle;
   const focusDim = surfaceReaction.focusDim;
   const sceneDim = surfaceReaction.sceneDim;
+
+  const sceneBlur = surfaceReaction.sceneBlur;
+  const blur = useDerivedValue(() => sceneBlur * surfaceSignal.scene.value);
 
   const uniforms = useDerivedValue<Uniforms>(() => ({
     resolution: RESOLUTION,
@@ -117,6 +127,7 @@ export function AmbientBackground() {
           height={SCREEN_SIZE.height}
         >
           <Shader source={SMEAR_EFFECT} uniforms={uniforms} />
+          <Blur blur={blur} mode="clamp" />
         </Rect>
       ) : null}
     </Canvas>

@@ -113,7 +113,7 @@ export function ThoughtInput({ onSubmit }: ThoughtInputProps) {
               setSurfaceFocus(false);
             }}
             onPressIn={() => inputRef.current?.focus()}
-            placeholder="Запишите мысль…"
+            placeholder="Write a thought…"
             placeholderTextColor={colors.textSecondary}
             selectionColor={colors.focus}
             cursorColor={colors.focus}
@@ -122,13 +122,13 @@ export function ThoughtInput({ onSubmit }: ThoughtInputProps) {
             submitBehavior="newline"
             textAlignVertical="top"
             style={styles.input}
-            accessibilityLabel="Новая мысль"
+            accessibilityLabel="New thought"
           />
         </View>
       </Pressable>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Отправить мысль"
+        accessibilityLabel="Send thought"
         disabled={!canSubmit}
         onPress={() => void handleSubmit()}
         style={({ pressed }) => [
@@ -137,7 +137,7 @@ export function ThoughtInput({ onSubmit }: ThoughtInputProps) {
           pressed && canSubmit && styles.submitButtonPressed,
         ]}
       >
-        <Text style={styles.submitButtonText}>Отправить</Text>
+        <Text style={styles.submitButtonText}>Send</Text>
       </Pressable>
     </View>
   );

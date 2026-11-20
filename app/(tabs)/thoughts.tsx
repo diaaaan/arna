@@ -128,7 +128,7 @@ export default function ThoughtsScreen() {
       return (
         <View style={styles.stateContainer}>
           <ActivityIndicator color={colors.accent} />
-          <Text style={styles.stateText}>Загрузка…</Text>
+          <Text style={styles.stateText}>Loading…</Text>
         </View>
       );
     }
@@ -136,7 +136,7 @@ export default function ThoughtsScreen() {
     if (loadState === 'error') {
       return (
         <View style={styles.stateContainer}>
-          <Text style={styles.stateText}>Не удалось загрузить мысли.</Text>
+          <Text style={styles.stateText}>Couldn’t load your thoughts.</Text>
           <Pressable
             accessibilityRole="button"
             onPress={retryLoad}
@@ -145,7 +145,7 @@ export default function ThoughtsScreen() {
               pressed && styles.retryButtonPressed,
             ]}
           >
-            <Text style={styles.retryButtonText}>Повторить</Text>
+            <Text style={styles.retryButtonText}>Try again</Text>
           </Pressable>
         </View>
       );
@@ -155,7 +155,7 @@ export default function ThoughtsScreen() {
       return (
         <View style={styles.stateContainer}>
           <Text style={styles.stateText}>
-            Здесь появятся сохранённые мысли.
+            Your saved thoughts will show up here.
           </Text>
         </View>
       );
@@ -185,7 +185,7 @@ export default function ThoughtsScreen() {
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Мысли</Text>
+        <Text style={styles.headerTitle}>Thoughts</Text>
       </View>
       <View style={styles.content}>{renderContent()}</View>
     </SafeAreaView>

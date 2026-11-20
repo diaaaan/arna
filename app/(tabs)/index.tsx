@@ -73,7 +73,7 @@ export default function CaptureScreen() {
 
     try {
       await appendThought(thought);
-      showFeedback('Мысль сохранена', 'success');
+      showFeedback('Saved', 'success');
       requestAnimationFrame(() => {
         void analyzeThought(thought).catch(() => {
           // Analysis is best-effort and must never interrupt thought capture.
@@ -82,7 +82,7 @@ export default function CaptureScreen() {
       return true;
     } catch (error: unknown) {
       console.error('Failed to save thought.', error);
-      showFeedback('Не удалось сохранить мысль', 'error');
+      showFeedback("Couldn't save this one · Try again", 'error');
       return false;
     }
   }, [showFeedback]);
@@ -130,7 +130,7 @@ export default function CaptureScreen() {
         >
           <View style={styles.appHeader}>
             <Pressable
-              accessibilityLabel={`Arna. Фон ${surfaceLabel}`}
+              accessibilityLabel={`Arna. Background: ${surfaceLabel}`}
               hitSlop={spacing.md}
               onPress={handleTitlePress}
             >
@@ -147,7 +147,7 @@ export default function CaptureScreen() {
             keyboardDismissMode="none"
             keyboardShouldPersistTaps="always"
           >
-            <Text style={styles.title}>Что у вас на уме?</Text>
+            <Text style={styles.title}>What’s on your mind?</Text>
 
             <View style={styles.inputArea}>
               <ThoughtInput onSubmit={handleSubmit} />

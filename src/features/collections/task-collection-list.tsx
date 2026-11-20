@@ -10,7 +10,7 @@ type TaskCollectionListProps = {
 };
 
 type TaskSection = {
-  title: 'Выполнено' | null;
+  title: 'Done' | null;
   data: Task[];
 };
 
@@ -32,7 +32,7 @@ export function TaskCollectionList({
       ? [{ title: null, data: activeTasks } satisfies TaskSection]
       : []),
     ...(completedTasks.length > 0
-      ? [{ title: 'Выполнено', data: completedTasks } satisfies TaskSection]
+      ? [{ title: 'Done', data: completedTasks } satisfies TaskSection]
       : []),
   ];
 
@@ -42,7 +42,7 @@ export function TaskCollectionList({
       keyExtractor={(task) => task.id}
       ListEmptyComponent={
         <View style={styles.stateContainer}>
-          <Text style={styles.stateText}>Пока задач нет.</Text>
+          <Text style={styles.stateText}>No tasks yet.</Text>
         </View>
       }
       renderItem={({ item }) => (
@@ -74,7 +74,7 @@ export function TaskCollectionList({
                   item.completed && styles.completedText,
                 ]}
               >
-                До {formatDueDate(item.dueDate)}
+                Due {formatDueDate(item.dueDate)}
               </Text>
             ) : null}
           </View>

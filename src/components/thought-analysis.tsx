@@ -14,32 +14,32 @@ type ThoughtAnalysisProps = {
 };
 
 const typeLabels: Record<InterpretationType, string> = {
-  task: 'Задача',
-  shopping_list: 'Список покупок',
-  idea: 'Идея',
-  note: 'Заметка',
-  quote: 'Цитата',
-  reminder: 'Напоминание',
-  project: 'Проект',
-  unknown: 'Не определено',
+  task: 'Task',
+  shopping_list: 'Shopping list',
+  idea: 'Idea',
+  note: 'Note',
+  quote: 'Quote',
+  reminder: 'Reminder',
+  project: 'Project',
+  unknown: 'Unclear',
 };
 
 const categoryLabels: Record<InterpretationCategory, string> = {
-  work: 'Работа',
-  home: 'Дом',
-  health: 'Здоровье',
-  finance: 'Финансы',
-  learning: 'Обучение',
-  creativity: 'Творчество',
-  personal: 'Личное',
-  unknown: 'Не определено',
+  work: 'Work',
+  home: 'Home',
+  health: 'Health',
+  finance: 'Finance',
+  learning: 'Learning',
+  creativity: 'Creativity',
+  personal: 'Personal',
+  unknown: 'Unclear',
 };
 
 const urgencyLabels: Record<InterpretationUrgency, string> = {
-  low: 'Низкая',
-  medium: 'Средняя',
-  high: 'Высокая',
-  unknown: 'Не определена',
+  low: 'Low',
+  medium: 'Medium',
+  high: 'High',
+  unknown: 'Unclear',
 };
 
 function formatDueDate(dueDate: string) {
@@ -63,17 +63,17 @@ function Detail({ label, value }: { label: string; value: string }) {
 
 export function ThoughtAnalysis({ analysis, onRetry }: ThoughtAnalysisProps) {
   if (!analysis) {
-    return <Text style={styles.neutralStatus}>Анализ ещё не выполнялся</Text>;
+    return <Text style={styles.neutralStatus}>Not sorted yet</Text>;
   }
 
   if (analysis.status === 'pending') {
-    return <Text style={styles.pendingStatus}>Анализируется…</Text>;
+    return <Text style={styles.pendingStatus}>Making sense of it…</Text>;
   }
 
   if (analysis.status === 'failed') {
     return (
       <View style={styles.failedContainer}>
-        <Text style={styles.failedStatus}>Не удалось разобрать</Text>
+        <Text style={styles.failedStatus}>Couldn’t sort this one out</Text>
         <Pressable
           accessibilityRole="button"
           onPress={onRetry}
@@ -82,7 +82,7 @@ export function ThoughtAnalysis({ analysis, onRetry }: ThoughtAnalysisProps) {
             pressed && styles.retryButtonPressed,
           ]}
         >
-          <Text style={styles.retryButtonText}>Повторить анализ</Text>
+          <Text style={styles.retryButtonText}>Try again</Text>
         </Pressable>
       </View>
     );
@@ -90,16 +90,16 @@ export function ThoughtAnalysis({ analysis, onRetry }: ThoughtAnalysisProps) {
 
   return (
     <View style={styles.successContainer}>
-      <Detail label="Тип" value={typeLabels[analysis.type]} />
-      <Detail label="Категория" value={categoryLabels[analysis.category]} />
-      <Detail label="Срочность" value={urgencyLabels[analysis.urgency]} />
-      <Detail label="Кратко" value={analysis.summary} />
+      <Detail label="Type" value={typeLabels[analysis.type]} />
+      <Detail label="Category" value={categoryLabels[analysis.category]} />
+      <Detail label="Urgency" value={urgencyLabels[analysis.urgency]} />
+      <Detail label="Summary" value={analysis.summary} />
       {analysis.dueDate ? (
-        <Detail label="Срок" value={formatDueDate(analysis.dueDate)} />
+        <Detail label="Due" value={formatDueDate(analysis.dueDate)} />
       ) : null}
       {analysis.items.length > 0 ? (
         <View style={styles.itemsContainer}>
-          <Text style={styles.detailLabel}>Пункты:</Text>
+          <Text style={styles.detailLabel}>Items:</Text>
           {analysis.items.map((item, index) => (
             <Text key={`${index}-${item.title}`} style={styles.item}>
               • {item.title}
@@ -109,7 +109,7 @@ export function ThoughtAnalysis({ analysis, onRetry }: ThoughtAnalysisProps) {
         </View>
       ) : null}
       <Detail
-        label="Уверенность"
+        label="Confidence"
         value={`${Math.round(analysis.confidence * 100)}%${
           analysis.promptVersion
             ? ` · Prompt v${analysis.promptVersion}`

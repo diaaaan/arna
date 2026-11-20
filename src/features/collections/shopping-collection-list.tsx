@@ -10,7 +10,7 @@ type ShoppingCollectionListProps = {
 };
 
 type ShoppingSection = {
-  title: 'Куплено' | null;
+  title: 'Bought' | null;
   data: ShoppingItem[];
 };
 
@@ -30,7 +30,7 @@ export function ShoppingCollectionList({
       ? [{ title: null, data: activeItems } satisfies ShoppingSection]
       : []),
     ...(checkedItems.length > 0
-      ? [{ title: 'Куплено', data: checkedItems } satisfies ShoppingSection]
+      ? [{ title: 'Bought', data: checkedItems } satisfies ShoppingSection]
       : []),
   ];
 
@@ -40,7 +40,7 @@ export function ShoppingCollectionList({
       keyExtractor={(shoppingItem) => shoppingItem.id}
       ListEmptyComponent={
         <View style={styles.stateContainer}>
-          <Text style={styles.stateText}>Пока покупок нет.</Text>
+          <Text style={styles.stateText}>No shopping yet.</Text>
         </View>
       }
       renderItem={({ item }) => (

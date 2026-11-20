@@ -16,6 +16,8 @@ import type { Tabs } from 'expo-router';
 import {
   useCallback,
   useEffect,
+  useMemo,
+  useRef,
   useState,
   type ComponentProps,
 } from 'react';
@@ -27,6 +29,7 @@ import {
   Text,
   useWindowDimensions,
   View,
+  type GestureResponderEvent,
 } from 'react-native';
 import Animated, {
   Easing,
@@ -43,7 +46,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { surfaceSignal } from '../../theme/surface-signal';
-import { colors, navigation, typography } from '../../theme/tokens';
+import { colors, navigation, surfaceReaction, typography } from '../../theme/tokens';
 import { ORB_BLOB_SOURCE } from './orb-blob';
 
 type TabBarProps = Parameters<
@@ -61,33 +64,26 @@ type Section = {
   angle: number;
 };
 
+// Left to right, so sliding the finger sideways walks through them in order.
 const SECTIONS: readonly Section[] = [
-  { route: 'index', label: 'Запись', icon: 'create-outline', activeIcon: 'create', angle: 150 },
-  { route: 'thoughts', label: 'Мысли', icon: 'bulb-outline', activeIcon: 'bulb', angle: -90 },
-  { route: 'collections', label: 'Коллекции', icon: 'albums-outline', activeIcon: 'albums', angle: 30 },
+  { route: 'index', label: 'Write', icon: 'create-outline', activeIcon: 'create', angle: -152 },
+  { route: 'thoughts', label: 'Thoughts', icon: 'bulb-outline', activeIcon: 'bulb', angle: -90 },
+  { route: 'collections', label: 'Collections', icon: 'albums-outline', activeIcon: 'albums', angle: -28 },
 ];
 
-// Geometry of the blob box (BOX × BOX), in points.
-const BOX = 300;
-const CENTER = { x: BOX / 2, y: 152 };
-const CORE_R = 64;
-const LOBE_R = 50;
-const LOBE_DIST = 88;
+// Geometry, in points. The box spans the screen width and sits on its bottom edge.
+const BOX_H = 320;
 const ORB_R = navigation.orbSize / 2;
-const ORB = { x: BOX / 2, y: BOX - ORB_R - 8 };
-const LOBE_SPHERE = 46;
+const CORE_R = 70;
+const LOBE_R = 44;
+const LOBE_FOCUS_GROW = 9;
+const LOBE_DIST = 128;
+const LOBE_SPHERE = 44;
+const ORB_CANVAS = navigation.orbSize + 56;
 
-const LOBES = SECTIONS.map((section) => {
-  const rad = (section.angle * Math.PI) / 180;
-  return {
-    x: CENTER.x + Math.cos(rad) * LOBE_DIST,
-    y: CENTER.y + Math.sin(rad) * LOBE_DIST,
-  };
-});
-
-// Flat copies for worklets.
-const LX = LOBES.map((l) => l.x);
-const LY = LOBES.map((l) => l.y);
+// A quick press without movement opens the blob and leaves it open for taps.
+const TAP_MS = 220;
+const TAP_SLOP = 10;
 
 const BLOB_EFFECT = (() => {
   try {
@@ -103,13 +99,31 @@ const ORB_STOPS = [0, 0.22, 0.48, 0.75, 1];
 // Cool orb (gradient/orb-cool) for the section lobes.
 const COOL_COLORS = ['#E4FFA0', '#A8F0DE', '#6FA3FF', '#2A5BE0'] as const;
 
-const OPEN_SPRING = { damping: 15, stiffness: 160, mass: 0.9 };
+const OPEN_SPRING = { damping: 16, stiffness: 190, mass: 0.85 };
+const FOCUS_SPRING = { damping: 18, stiffness: 260 };
 const CLOSE_TIMING = { duration: 220, easing: Easing.in(Easing.cubic) };
 
 function lobeProgress(progress: number, index: number) {
   'worklet';
-  const delay = 0.1 * (index + 1);
+  const delay = 0.08 * (index + 1);
   return Math.max(0, (progress - delay) / (1 - delay));
+}
+
+function focusWeight(focus: number, index: number) {
+  'worklet';
+  return Math.max(0, 1 - Math.abs(focus - index));
+}
+
+function haptic(kind: 'press' | 'select' | 'go') {
+  const run =
+    kind === 'select'
+      ? Haptics.selectionAsync()
+      : Haptics.impactAsync(
+          kind === 'press'
+            ? Haptics.ImpactFeedbackStyle.Medium
+            : Haptics.ImpactFeedbackStyle.Light,
+        );
+  void run.catch(() => undefined);
 }
 
 export function OrbNavigator({ state, navigateToTab, insets }: TabBarProps) {
@@ -118,17 +132,39 @@ export function OrbNavigator({ state, navigateToTab, insets }: TabBarProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const progress = useSharedValue(0);
+  const focus = useSharedValue(0);
   const hidden = useSharedValue(0);
   const breath = useSharedValue(0);
 
   const activeRoute = state.routes[state.index]?.name;
-  const activeSection =
-    SECTIONS.find((section) => section.route === activeRoute) ?? SECTIONS[0];
+  const activeIndex = Math.max(
+    0,
+    SECTIONS.findIndex((section) => section.route === activeRoute),
+  );
 
-  // Text-heavy screens get a calmer background.
+  // The orb is half tucked under the bottom edge of the screen.
+  const orb = useMemo(
+    () => ({ x: width / 2, y: BOX_H - insets.bottom * 0.35 }),
+    [insets.bottom, width],
+  );
+  const lobes = useMemo(
+    () =>
+      SECTIONS.map((section) => {
+        const rad = (section.angle * Math.PI) / 180;
+        return {
+          x: orb.x + Math.cos(rad) * LOBE_DIST,
+          y: orb.y + Math.sin(rad) * LOBE_DIST,
+        };
+      }),
+    [orb],
+  );
+
+  // The living surface only moves on the capture screen.
   useEffect(() => {
     surfaceSignal.scene.set(
-      withTiming(activeRoute === 'index' ? 0 : 1, { duration: 500 }),
+      withTiming(activeRoute === 'index' ? 0 : 1, {
+        duration: surfaceReaction.sceneDuration,
+      }),
     );
   }, [activeRoute]);
 
@@ -172,13 +208,25 @@ export function OrbNavigator({ state, navigateToTab, insets }: TabBarProps) {
   const open = useCallback(() => {
     Keyboard.dismiss();
     setIsOpen(true);
+    focus.set(activeIndex);
     progress.set(
       reduceMotion ? withTiming(1, { duration: 160 }) : withSpring(1, OPEN_SPRING),
     );
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(
-      () => undefined,
-    );
-  }, [progress, reduceMotion]);
+    haptic('press');
+  }, [activeIndex, focus, progress, reduceMotion]);
+
+  const goTo = useCallback(
+    (index: number) => {
+      close();
+      const route = SECTIONS[index]?.route;
+      const target = state.routes.find((r) => r.name === route);
+      if (target && index !== activeIndex) {
+        haptic('go');
+        navigateToTab(target.key);
+      }
+    },
+    [activeIndex, close, navigateToTab, state.routes],
+  );
 
   useEffect(() => {
     if (!isOpen) {
@@ -191,41 +239,94 @@ export function OrbNavigator({ state, navigateToTab, insets }: TabBarProps) {
     return () => sub.remove();
   }, [close, isOpen]);
 
-  const goTo = useCallback(
-    (route: string) => {
-      void Haptics.selectionAsync().catch(() => undefined);
-      close();
-      const target = state.routes.find((r) => r.name === route);
-      if (target && route !== activeRoute) {
-        navigateToTab(target.key);
+  // Press and hold the orb, slide sideways to pick a section, release to go.
+  const gesture = useRef({
+    startedAt: 0,
+    startX: 0,
+    startY: 0,
+    wasOpen: false,
+    moved: false,
+    index: 0,
+  });
+
+  const onGrant = (event: GestureResponderEvent) => {
+    const { pageX, pageY } = event.nativeEvent;
+    gesture.current = {
+      startedAt: Date.now(),
+      startX: pageX,
+      startY: pageY,
+      wasOpen: isOpen,
+      moved: false,
+      index: activeIndex,
+    };
+    if (!isOpen) {
+      open();
+    }
+  };
+
+  const onMove = (event: GestureResponderEvent) => {
+    const { pageX, pageY } = event.nativeEvent;
+    const g = gesture.current;
+    if (
+      Math.abs(pageX - g.startX) > TAP_SLOP ||
+      Math.abs(pageY - g.startY) > TAP_SLOP
+    ) {
+      g.moved = true;
+    }
+    if (!g.moved) {
+      return;
+    }
+    let nearest = 0;
+    let best = Infinity;
+    lobes.forEach((lobe, i) => {
+      const d = Math.abs(lobe.x - pageX);
+      if (d < best) {
+        best = d;
+        nearest = i;
       }
-    },
-    [activeRoute, close, navigateToTab, state.routes],
-  );
+    });
+    if (nearest !== g.index) {
+      g.index = nearest;
+      focus.set(withSpring(nearest, FOCUS_SPRING));
+      haptic('select');
+    }
+  };
+
+  const onRelease = () => {
+    const g = gesture.current;
+    const quick = Date.now() - g.startedAt < TAP_MS;
+    if (!g.moved && quick) {
+      // A tap: open and wait for a tap on a lobe, or close if it was open.
+      if (g.wasOpen) {
+        close();
+      }
+      return;
+    }
+    goTo(g.index);
+  };
 
   const uniforms = useDerivedValue<Uniforms>(() => {
     const p = progress.value;
+    const f = focus.value;
     const pc = Math.min(p, 1.08);
-    const startR = ORB_R * 0.85;
+    const startR = ORB_R * 0.9;
     const lobe = (i: number) => {
       const q = lobeProgress(p, i);
+      const target = lobes[i];
+      const r = LOBE_R + LOBE_FOCUS_GROW * focusWeight(f, i);
       return [
-        ORB.x + (LX[i] - ORB.x) * q,
-        ORB.y + (LY[i] - ORB.y) * q,
-        startR + (LOBE_R - startR) * Math.min(q, 1.06),
+        orb.x + (target.x - orb.x) * q,
+        orb.y + (target.y - orb.y) * q,
+        startR * 0.7 + (r - startR * 0.7) * Math.min(q, 1.06),
       ];
     };
     return {
-      size: [BOX, BOX],
-      c0: [
-        ORB.x + (CENTER.x - ORB.x) * pc,
-        ORB.y + (CENTER.y - ORB.y) * pc,
-        startR + (CORE_R - startR) * pc,
-      ],
+      size: [width, BOX_H],
+      c0: [orb.x, orb.y, startR + (CORE_R - startR) * pc],
       c1: lobe(0),
       c2: lobe(1),
       c3: lobe(2),
-      smoothness: 26,
+      smoothness: 34,
       alpha: Math.min(1, p * 4),
     };
   });
@@ -235,22 +336,21 @@ export function OrbNavigator({ state, navigateToTab, insets }: TabBarProps) {
   }));
 
   const orbStyle = useAnimatedStyle(() => {
-    const visible = (1 - hidden.value) * (1 - Math.min(1, progress.value * 1.6));
+    const p = Math.min(1, progress.value);
     return {
-      opacity: visible,
+      opacity: 1 - hidden.value,
       transform: [
-        { scale: (1 + 0.035 * breath.value) * (0.85 + 0.15 * visible) },
-        { translateY: 24 * hidden.value },
+        { translateY: (ORB_R + 20) * hidden.value },
+        { scale: (1 + 0.03 * breath.value) * (1 + 0.08 * p) },
       ],
     };
   });
 
-  const centerStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(progress.value, [0.5, 1], [0, 1], 'clamp'),
+  const hintStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(progress.value, [0.6, 1], [0, 1], 'clamp'),
   }));
 
-  const bottom = insets.bottom + navigation.tabBarBottomInset;
-  const boxLeft = (width - BOX) / 2;
+  const topLobe = lobes[1];
 
   return (
     <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
@@ -260,106 +360,133 @@ export function OrbNavigator({ state, navigateToTab, insets }: TabBarProps) {
       >
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Закрыть разделы"
+          accessibilityLabel="Close sections"
           onPress={close}
           style={StyleSheet.absoluteFill}
         />
       </Animated.View>
 
-      <View
-        pointerEvents="box-none"
-        style={[styles.box, { left: boxLeft, bottom }]}
-      >
+      <View pointerEvents="box-none" style={[styles.box, { width }]}>
         {BLOB_EFFECT ? (
-          <Canvas pointerEvents="none" style={styles.canvas}>
+          <Canvas pointerEvents="none" style={[styles.canvas, { width }]}>
             <Fill>
               <Shader source={BLOB_EFFECT} uniforms={uniforms} />
             </Fill>
           </Canvas>
         ) : null}
 
-        <Animated.View
+        <Animated.Text
           pointerEvents="none"
-          style={[styles.center, centerStyle]}
+          style={[
+            styles.hint,
+            { top: topLobe.y - LOBE_R - LOBE_FOCUS_GROW - 26, width },
+            hintStyle,
+          ]}
         >
-          <Text style={styles.centerTitle}>{activeSection.label}</Text>
-          <Text style={styles.centerHint}>Куда дальше?</Text>
-        </Animated.View>
+          Slide to choose
+        </Animated.Text>
 
         {SECTIONS.map((section, index) => (
           <Lobe
             key={section.route}
             index={index}
             section={section}
-            active={section.route === activeSection.route}
+            position={lobes[index]}
+            origin={orb}
+            active={index === activeIndex}
             enabled={isOpen}
             progress={progress}
+            focus={focus}
             onPress={goTo}
           />
         ))}
 
         <Animated.View
-          pointerEvents={isOpen || keyboardVisible ? 'none' : 'box-none'}
-          style={[styles.orbWrap, orbStyle]}
+          pointerEvents={keyboardVisible ? 'none' : 'auto'}
+          accessible
+          accessibilityRole="button"
+          accessibilityLabel={`Sections. Current: ${SECTIONS[activeIndex].label}`}
+          accessibilityHint="Opens the section switcher"
+          onAccessibilityTap={() => (isOpen ? close() : open())}
+          style={[
+            styles.orbWrap,
+            { left: orb.x - ORB_CANVAS / 2, top: orb.y - ORB_CANVAS / 2 },
+            orbStyle,
+          ]}
+          onStartShouldSetResponder={() => true}
+          onMoveShouldSetResponder={() => true}
+          onResponderTerminationRequest={() => false}
+          onResponderGrant={onGrant}
+          onResponderMove={onMove}
+          onResponderRelease={onRelease}
+          onResponderTerminate={close}
         >
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`Разделы. Сейчас: ${activeSection.label}`}
-            accessibilityHint="Открывает переключение разделов"
-            hitSlop={12}
-            onPress={open}
-            style={styles.orbPressable}
-          >
-            <Canvas style={styles.orbCanvas}>
-              <Circle cx={ORB_CANVAS / 2} cy={ORB_CANVAS / 2 + 4} r={ORB_R * 0.95} color="rgba(255, 138, 92, 0.45)">
-                <Blur blur={14} />
-              </Circle>
-              <Circle cx={ORB_CANVAS / 2} cy={ORB_CANVAS / 2} r={ORB_R}>
-                <RadialGradient
-                  c={vec(ORB_CANVAS / 2 - ORB_R * 0.28, ORB_CANVAS / 2 - ORB_R * 0.34)}
-                  r={ORB_R * 1.45}
-                  colors={ORB_COLORS}
-                  positions={ORB_STOPS}
-                />
-              </Circle>
-              <Circle
-                cx={ORB_CANVAS / 2 - ORB_R * 0.32}
-                cy={ORB_CANVAS / 2 - ORB_R * 0.42}
-                r={ORB_R * 0.26}
-                color="rgba(255, 255, 255, 0.55)"
-              >
-                <Blur blur={5} />
-              </Circle>
-            </Canvas>
-          </Pressable>
+          <Canvas pointerEvents="none" style={styles.orbCanvas}>
+            <Circle
+              cx={ORB_CANVAS / 2}
+              cy={ORB_CANVAS / 2}
+              r={ORB_R}
+              color="rgba(255, 138, 92, 0.45)"
+            >
+              <Blur blur={18} />
+            </Circle>
+            <Circle cx={ORB_CANVAS / 2} cy={ORB_CANVAS / 2} r={ORB_R}>
+              <RadialGradient
+                c={vec(ORB_CANVAS / 2 - ORB_R * 0.2, ORB_CANVAS / 2 - ORB_R * 0.45)}
+                r={ORB_R * 1.5}
+                colors={ORB_COLORS}
+                positions={ORB_STOPS}
+              />
+            </Circle>
+            <Circle
+              cx={ORB_CANVAS / 2 - ORB_R * 0.28}
+              cy={ORB_CANVAS / 2 - ORB_R * 0.5}
+              r={ORB_R * 0.22}
+              color="rgba(255, 255, 255, 0.55)"
+            >
+              <Blur blur={6} />
+            </Circle>
+          </Canvas>
         </Animated.View>
       </View>
     </View>
   );
 }
 
-const ORB_CANVAS = navigation.orbSize + 40;
-
 type LobeProps = {
   index: number;
   section: Section;
+  position: { x: number; y: number };
+  origin: { x: number; y: number };
   active: boolean;
   enabled: boolean;
   progress: SharedValue<number>;
-  onPress: (route: string) => void;
+  focus: SharedValue<number>;
+  onPress: (index: number) => void;
 };
 
-function Lobe({ index, section, active, enabled, progress, onPress }: LobeProps) {
-  const target = LOBES[index];
+function Lobe({
+  index,
+  section,
+  position,
+  origin,
+  active,
+  enabled,
+  progress,
+  focus,
+  onPress,
+}: LobeProps) {
   const style = useAnimatedStyle(() => {
     const q = lobeProgress(progress.value, index);
     const appear = interpolate(q, [0.35, 1], [0, 1], 'clamp');
+    const rest = 1 - Math.min(q, 1);
+    const w = focusWeight(focus.value, index);
     return {
-      opacity: appear,
+      opacity: appear * (0.62 + 0.38 * w),
       transform: [
-        { translateX: (ORB.x - target.x) * (1 - Math.min(q, 1)) },
-        { translateY: (ORB.y - target.y) * (1 - Math.min(q, 1)) },
-        { scale: 0.6 + 0.4 * appear },
+        { translateX: (origin.x - position.x) * rest },
+        { translateY: (origin.y - position.y) * rest },
+        { scale: (0.6 + 0.4 * appear) * (1 + 0.14 * w) },
       ],
     };
   });
@@ -369,7 +496,7 @@ function Lobe({ index, section, active, enabled, progress, onPress }: LobeProps)
       pointerEvents={enabled ? 'box-none' : 'none'}
       style={[
         styles.lobe,
-        { left: target.x - LOBE_R, top: target.y - LOBE_R },
+        { left: position.x - LOBE_R, top: position.y - LOBE_R },
         style,
       ]}
     >
@@ -377,8 +504,8 @@ function Lobe({ index, section, active, enabled, progress, onPress }: LobeProps)
         accessibilityRole="button"
         accessibilityLabel={section.label}
         accessibilityState={{ selected: active }}
-        onPress={() => onPress(section.route)}
-        style={({ pressed }) => [styles.lobePressable, pressed && styles.pressed]}
+        onPress={() => onPress(index)}
+        style={styles.lobePressable}
       >
         <View style={[styles.sphereRing, active && styles.sphereRingActive]}>
           <LinearGradient
@@ -389,14 +516,12 @@ function Lobe({ index, section, active, enabled, progress, onPress }: LobeProps)
           >
             <Ionicons
               name={active ? section.activeIcon : section.icon}
-              size={22}
+              size={21}
               color="#FFFFFF"
             />
           </LinearGradient>
         </View>
-        <Text style={[styles.lobeLabel, active && styles.lobeLabelActive]}>
-          {section.label}
-        </Text>
+        <Text style={styles.lobeLabel}>{section.label}</Text>
       </Pressable>
     </Animated.View>
   );
@@ -408,32 +533,25 @@ const styles = StyleSheet.create({
   },
   box: {
     position: 'absolute',
-    width: BOX,
-    height: BOX,
+    left: 0,
+    bottom: 0,
+    height: BOX_H,
   },
   canvas: {
     position: 'absolute',
-    width: BOX,
-    height: BOX,
+    left: 0,
+    top: 0,
+    height: BOX_H,
   },
-  center: {
-    position: 'absolute',
-    left: CENTER.x - CORE_R,
-    top: CENTER.y - 22,
-    width: CORE_R * 2,
-    alignItems: 'center',
-  },
-  centerTitle: {
-    ...typography.button,
-    color: colors.textPrimary,
-  },
-  centerHint: {
+  hint: {
     ...typography.navigationLabel,
+    position: 'absolute',
+    left: 0,
     fontSize: 10,
     letterSpacing: 0.8,
     textTransform: 'uppercase',
+    textAlign: 'center',
     color: 'rgba(189, 188, 207, 0.6)',
-    marginTop: 2,
   },
   lobe: {
     position: 'absolute',
@@ -444,10 +562,7 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
-  },
-  pressed: {
-    opacity: 0.75,
+    gap: 3,
   },
   sphereRing: {
     padding: 2,
@@ -457,10 +572,6 @@ const styles = StyleSheet.create({
   },
   sphereRingActive: {
     borderColor: 'rgba(201, 184, 255, 0.85)',
-    shadowColor: '#8A63FF',
-    shadowOpacity: 0.6,
-    shadowRadius: 12,
-    elevation: 6,
   },
   sphere: {
     width: LOBE_SPHERE,
@@ -471,20 +582,12 @@ const styles = StyleSheet.create({
   },
   lobeLabel: {
     ...typography.navigationLabel,
-    color: colors.textSecondary,
-  },
-  lobeLabelActive: {
     color: colors.textPrimary,
   },
   orbWrap: {
     position: 'absolute',
-    left: ORB.x - ORB_CANVAS / 2,
-    top: ORB.y - ORB_CANVAS / 2,
     width: ORB_CANVAS,
     height: ORB_CANVAS,
-  },
-  orbPressable: {
-    flex: 1,
   },
   orbCanvas: {
     flex: 1,

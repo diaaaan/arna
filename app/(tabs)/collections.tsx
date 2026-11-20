@@ -46,31 +46,31 @@ import {
 } from '../../src/theme/tokens';
 
 const filters = [
-  { id: 'all', label: 'Все' },
-  { id: 'tasks', label: 'Задачи' },
-  { id: 'shopping', label: 'Покупки' },
-  { id: 'ideas', label: 'Идеи' },
-  { id: 'quotes', label: 'Цитаты' },
-  { id: 'unsorted', label: 'Неразобранные' },
+  { id: 'all', label: 'All' },
+  { id: 'tasks', label: 'Tasks' },
+  { id: 'shopping', label: 'Shopping' },
+  { id: 'ideas', label: 'Ideas' },
+  { id: 'quotes', label: 'Quotes' },
+  { id: 'unsorted', label: 'Unsorted' },
 ] as const;
 
 type Filter = (typeof filters)[number]['id'];
 type LoadState = 'loading' | 'ready' | 'error';
 type MixedCollectionItem = CollectionListItem & {
-  typeLabel: 'Задача' | 'Покупка' | 'Идея' | 'Цитата' | 'Неразобранное';
+  typeLabel: 'Task' | 'Shopping' | 'Idea' | 'Quote' | 'Unsorted';
   categoryLabel: string;
   text: string;
 };
 
 const categoryLabels: Record<InterpretationCategory, string> = {
-  work: 'Работа',
-  home: 'Дом',
-  health: 'Здоровье',
-  finance: 'Финансы',
-  learning: 'Обучение',
-  creativity: 'Творчество',
-  personal: 'Личное',
-  unknown: 'Без категории',
+  work: 'Work',
+  home: 'Home',
+  health: 'Health',
+  finance: 'Finance',
+  learning: 'Learning',
+  creativity: 'Creativity',
+  personal: 'Personal',
+  unknown: 'No category',
 };
 
 function sortNewestFirst<Item extends CollectionListItem>(items: Item[]) {
@@ -172,14 +172,14 @@ export default function CollectionsScreen() {
         ...tasks.map((task) => ({
           id: task.id,
           createdAt: task.createdAt,
-          typeLabel: 'Задача' as const,
+          typeLabel: 'Task' as const,
           categoryLabel: getCategoryLabel(task.originThoughtId),
           text: task.title,
         })),
         ...shoppingItems.map((shoppingItem) => ({
           id: shoppingItem.id,
           createdAt: shoppingItem.createdAt,
-          typeLabel: 'Покупка' as const,
+          typeLabel: 'Shopping' as const,
           categoryLabel: getCategoryLabel(shoppingItem.originThoughtId),
           text: `${shoppingItem.title}${
             shoppingItem.quantity === null
@@ -190,21 +190,21 @@ export default function CollectionsScreen() {
         ...ideas.map((idea) => ({
           id: idea.id,
           createdAt: idea.createdAt,
-          typeLabel: 'Идея' as const,
+          typeLabel: 'Idea' as const,
           categoryLabel: getCategoryLabel(idea.originThoughtId),
           text: idea.title,
         })),
         ...quotes.map((quote) => ({
           id: quote.id,
           createdAt: quote.createdAt,
-          typeLabel: 'Цитата' as const,
+          typeLabel: 'Quote' as const,
           categoryLabel: getCategoryLabel(quote.originThoughtId),
           text: quote.text,
         })),
         ...unsortedThoughts.map((thought) => ({
           id: thought.id,
           createdAt: thought.createdAt,
-          typeLabel: 'Неразобранное' as const,
+          typeLabel: 'Unsorted' as const,
           categoryLabel: getCategoryLabel(thought.originThoughtId),
           text: thought.text,
         })),
@@ -265,7 +265,7 @@ export default function CollectionsScreen() {
       return (
         <View style={styles.stateContainer}>
           <ActivityIndicator color={colors.accent} />
-          <Text style={styles.stateText}>Загрузка…</Text>
+          <Text style={styles.stateText}>Loading…</Text>
         </View>
       );
     }
@@ -273,7 +273,7 @@ export default function CollectionsScreen() {
     if (loadState === 'error') {
       return (
         <View style={styles.stateContainer}>
-          <Text style={styles.stateText}>Не удалось загрузить коллекции.</Text>
+          <Text style={styles.stateText}>Couldn’t load your collections.</Text>
         </View>
       );
     }
@@ -299,7 +299,7 @@ export default function CollectionsScreen() {
         return (
           <CollectionList
             items={ideas}
-            emptyMessage="Здесь появятся ваши идеи."
+            emptyMessage="Your ideas will show up here."
             bottomPadding={bottomPadding}
             getText={getIdeaText}
           />
@@ -308,7 +308,7 @@ export default function CollectionsScreen() {
         return (
           <CollectionList
             items={quotes}
-            emptyMessage="Здесь появятся сохранённые цитаты."
+            emptyMessage="Saved quotes will show up here."
             bottomPadding={bottomPadding}
             getText={getQuoteText}
           />
@@ -317,7 +317,7 @@ export default function CollectionsScreen() {
         return (
           <CollectionList
             items={unsortedThoughts}
-            emptyMessage="Здесь появятся мысли, которые Arna пока не смогла понять."
+            emptyMessage="Thoughts Arna couldn’t sort yet will show up here."
             bottomPadding={bottomPadding}
             getText={getUnsortedText}
           />
@@ -326,7 +326,7 @@ export default function CollectionsScreen() {
         return (
           <CollectionList
             items={mixedItems}
-            emptyMessage="Здесь появятся результаты, которые Arna создаёт из ваших мыслей."
+            emptyMessage="What Arna makes from your thoughts will show up here."
             bottomPadding={bottomPadding}
             getText={getMixedText}
             getLabel={getMixedLabel}
@@ -338,7 +338,7 @@ export default function CollectionsScreen() {
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Коллекции</Text>
+        <Text style={styles.headerTitle}>Collections</Text>
       </View>
       <ScrollView
         horizontal

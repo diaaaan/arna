@@ -171,8 +171,8 @@ export const LIVING_SURFACE_PRESET = 'livingFlowField' as const;
 export type SmearModeName = 'base' | 'lava';
 export const SMEAR_MODE_DEFAULT: SmearModeName = 'lava';
 export const smearModes: Record<SmearModeName, { label: string; value: number }> = {
-  base: { label: 'Сумерки', value: 0 },
-  lava: { label: 'Лава', value: 1 },
+  base: { label: 'Dusk', value: 0 },
+  lava: { label: 'Lava', value: 1 },
 };
 
 export const smearPreset = {
@@ -194,8 +194,10 @@ export const surfaceReaction = {
   focusSlowdown: 0.55,
   // Transition length, ms.
   focusDuration: 650,
-  // Fraction mixed toward the dark base on text-heavy screens (thoughts, collections).
-  sceneDim: 0.45,
+  // On other sections (thoughts, collections) the surface stops, blurs and dims.
+  sceneDim: 0.3,
+  sceneBlur: 28,
+  sceneDuration: 600,
 } as const;
 
 // The "dusk" palette: mostly deep blue and violet, pink and apricot only as
@@ -337,10 +339,11 @@ export const visual = {
 
 // Bottom navigation: a single orb that opens into a blob with the sections.
 export const navigation = {
-  // Space reserved at the bottom of scrolling content for the orb.
-  tabBarHeight: 76,
-  tabBarBottomInset: spacing.xs,
-  orbSize: 60,
+  // Space reserved at the bottom of scrolling content for the orb, which is
+  // half tucked under the bottom edge of the screen.
+  tabBarHeight: 56,
+  tabBarBottomInset: 0,
+  orbSize: 96,
 } as const;
 
 export const shadows = {
