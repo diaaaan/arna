@@ -112,7 +112,7 @@ function lobeProgress(progress: number, index: number) {
   return Math.max(0, (progress - delay) / (1 - delay));
 }
 
-export function OrbNavigator({ state, navigation: nav, insets }: TabBarProps) {
+export function OrbNavigator({ state, navigateToTab, insets }: TabBarProps) {
   const { width } = useWindowDimensions();
   const reduceMotion = useReducedMotion();
   const [isOpen, setIsOpen] = useState(false);
@@ -195,11 +195,12 @@ export function OrbNavigator({ state, navigation: nav, insets }: TabBarProps) {
     (route: string) => {
       void Haptics.selectionAsync().catch(() => undefined);
       close();
-      if (route !== activeRoute) {
-        nav.navigate(route);
+      const target = state.routes.find((r) => r.name === route);
+      if (target && route !== activeRoute) {
+        navigateToTab(target.key);
       }
     },
-    [activeRoute, close, nav],
+    [activeRoute, close, navigateToTab, state.routes],
   );
 
   const uniforms = useDerivedValue<Uniforms>(() => {

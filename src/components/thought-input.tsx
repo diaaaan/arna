@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ComponentRef } from 'react';
 import {
   Keyboard,
   Pressable,
@@ -38,7 +38,7 @@ export function ThoughtInput({ onSubmit }: ThoughtInputProps) {
   const [rawText, setRawText] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
-  const inputRef = useRef<TextInput>(null);
+  const inputRef = useRef<ComponentRef<typeof TextInput>>(null);
   const canSubmit = rawText.trim().length > 0 && !isSubmitting;
 
   useEffect(() => {

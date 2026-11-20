@@ -5,6 +5,10 @@ import { AmbientBackground } from '../../src/components/ambient-background';
 import { OrbNavigator } from '../../src/components/navigation/orb-navigator';
 import { colors } from '../../src/theme/tokens';
 
+export const unstable_settings = {
+  initialRouteName: 'index',
+};
+
 // Three sections share one living background; switching happens through the
 // orb at the bottom (see OrbNavigator), not through a classic tab bar.
 export default function TabLayout() {
@@ -14,7 +18,6 @@ export default function TabLayout() {
         <AmbientBackground />
       </View>
       <Tabs
-        initialRouteName="index"
         tabBar={(props) => <OrbNavigator {...props} />}
         screenOptions={{
           headerShown: false,
