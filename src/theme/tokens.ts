@@ -341,9 +341,9 @@ export const visual = {
 export const navigation = {
   // Space reserved at the bottom of scrolling content for the orb, which is
   // half tucked under the bottom edge of the screen.
-  tabBarHeight: 56,
+  tabBarHeight: 72,
   tabBarBottomInset: 0,
-  orbSize: 96,
+  orbSize: 124,
 } as const;
 
 export const shadows = {
