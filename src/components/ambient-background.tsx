@@ -1,7 +1,6 @@
 import { useEffect } from 'react';
 import { StyleSheet } from 'react-native';
 import { Blur, Canvas, Fill, Rect, Shader } from '@shopify/react-native-skia';
-import type { Uniforms } from '@shopify/react-native-skia';
 import {
   useDerivedValue,
   useFrameCallback,
@@ -10,11 +9,11 @@ import {
 
 import { colors, smearPreset, surfaceReaction } from '../theme/tokens';
 import { surfaceSignal } from '../theme/surface-signal';
-import { SURFACE_EFFECT, SURFACE_SIZE, surfaceUniforms } from './surface-uniforms';
+import { SURFACE_EFFECT, SURFACE_SIZE, useSurfaceUniforms } from './surface-uniforms';
 
 export function AmbientBackground() {
   const reduceMotion = useReducedMotion();
-  const { motionPhase, slowPhase } = surfaceSignal;
+  const { motionPhase, slowPhase, focus, scene } = surfaceSignal;
 
   // Phases advance frame by frame so the speed can change at any moment
   // without a jump. The shader only reads them through whole harmonics, so the
@@ -27,8 +26,7 @@ export function AmbientBackground() {
     const dt = frame.timeSincePreviousFrame ?? 0;
     // Other sections freeze the surface; it only lives on the capture screen.
     const speed =
-      (1 - focusSlowdown * surfaceSignal.focus.value) *
-      (1 - surfaceSignal.scene.value);
+      (1 - focusSlowdown * focus.value) * (1 - scene.value);
     if (speed < 0.002) {
       return;
     }
@@ -52,8 +50,8 @@ export function AmbientBackground() {
   }, [frameCallback, motionPhase, slowPhase, reduceMotion]);
 
   const sceneBlur = surfaceReaction.sceneBlur;
-  const blur = useDerivedValue(() => sceneBlur * surfaceSignal.scene.value);
-  const uniforms = useDerivedValue<Uniforms>(() => surfaceUniforms());
+  const blur = useDerivedValue(() => sceneBlur * scene.value);
+  const uniforms = useSurfaceUniforms();
 
   return (
     <Canvas pointerEvents="none" style={styles.canvas}>

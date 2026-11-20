@@ -2,6 +2,8 @@ import { Skia, vec } from '@shopify/react-native-skia';
 import type { Uniforms } from '@shopify/react-native-skia';
 import { Dimensions } from 'react-native';
 
+import { useDerivedValue } from 'react-native-reanimated';
+
 import { surfaceSignal } from '../theme/surface-signal';
 import { smearPreset, smearStyle, surfaceReaction, visual } from '../theme/tokens';
 import { SMEAR_SOURCE } from './living-surface-smear';
@@ -24,11 +26,21 @@ const style = smearStyle;
 const focusDim = surfaceReaction.focusDim;
 const sceneDim = surfaceReaction.sceneDim;
 
-export function surfaceUniforms(): Uniforms {
+export type SurfaceState = {
+  motionPhase: number;
+  slowPhase: number;
+  mode: number;
+  focus: number;
+  scene: number;
+};
+
+// Callers must read the shared values themselves (see useSurfaceUniforms) so
+// that Reanimated sees them and recomputes every frame.
+export function surfaceUniforms(state: SurfaceState): Uniforms {
   'worklet';
   return {
     resolution: RESOLUTION,
-    motionPhase: surfaceSignal.motionPhase.value,
+    motionPhase: state.motionPhase,
     backgroundColor: visual.livingSurface.background,
     s0: style.stops[0],
     s1: style.stops[1],
@@ -46,12 +58,26 @@ export function surfaceUniforms(): Uniforms {
     cycleAmount: smearPreset.cycleAmount,
     textureAmount: style.textureAmount,
     tonePower: style.tonePower,
-    mode: surfaceSignal.mode.value,
-    slowPhase: surfaceSignal.slowPhase.value,
+    mode: state.mode,
+    slowPhase: state.slowPhase,
     // Typing and other sections both calm the surface; combine them.
     focusDim:
       1 -
-      (1 - focusDim * surfaceSignal.focus.value) *
-        (1 - sceneDim * surfaceSignal.scene.value),
+      (1 - focusDim * state.focus) *
+        (1 - sceneDim * state.scene),
   };
+}
+
+// Uniforms for the surface shader that follow the shared signals.
+export function useSurfaceUniforms() {
+  const { motionPhase, slowPhase, mode, focus, scene } = surfaceSignal;
+  return useDerivedValue<Uniforms>(() =>
+    surfaceUniforms({
+      motionPhase: motionPhase.value,
+      slowPhase: slowPhase.value,
+      mode: mode.value,
+      focus: focus.value,
+      scene: scene.value,
+    }),
+  );
 }
