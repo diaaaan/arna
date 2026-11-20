@@ -120,8 +120,7 @@ const styles = StyleSheet.create({
     elevation: spacing.xs,
   },
   messageText: {
-    ...typography.caption,
-    fontWeight: '600',
+    ...typography.captionStrong,
   },
   successText: {
     color: colors.success,

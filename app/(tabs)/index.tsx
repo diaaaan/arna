@@ -15,13 +15,14 @@ import {
   SubmissionFeedback,
   type SubmissionFeedbackMessage,
 } from '../../src/components/submission-feedback';
-import { AmbientBackground } from '../../src/components/ambient-background';
 import { ThoughtInput } from '../../src/components/thought-input';
 import { analyzeThought } from '../../src/mind/mind-engine';
 import { createThought } from '../../src/entities/thought/thought';
 import { appendThought } from '../../src/storage/thought-storage';
+import { surfaceSignal } from '../../src/theme/surface-signal';
 import {
   colors,
+  navigation,
   SMEAR_MODE_DEFAULT,
   smearModes,
   spacing,
@@ -43,6 +44,11 @@ export default function CaptureScreen() {
     SMEAR_MODE_DEFAULT,
   );
   const titleTapsRef = useRef({ count: 0, lastTapAt: 0 });
+
+  // The background lives in the tab layout; tell it which mode to show.
+  useEffect(() => {
+    surfaceSignal.mode.set(smearModes[surfaceMode].value);
+  }, [surfaceMode]);
 
   useEffect(() => {
     AsyncStorage.getItem(SURFACE_MODE_STORAGE_KEY)
@@ -114,10 +120,6 @@ export default function CaptureScreen() {
 
   return (
     <View style={styles.root}>
-      <View pointerEvents="none" style={styles.backgroundLayer}>
-        <AmbientBackground mode={surfaceMode} />
-      </View>
-
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.foreground}
@@ -132,13 +134,16 @@ export default function CaptureScreen() {
               hitSlop={spacing.md}
               onPress={handleTitlePress}
             >
-              <Text style={styles.appName}>Arna</Text>
+              <Text style={styles.appName}>arna</Text>
             </Pressable>
           </View>
 
           <ScrollView
             style={styles.scrollView}
-            contentContainerStyle={styles.captureArea}
+            contentContainerStyle={[
+              styles.captureArea,
+              { paddingBottom: navigation.tabBarHeight + spacing.lg },
+            ]}
             keyboardDismissMode="none"
             keyboardShouldPersistTaps="always"
           >
@@ -161,18 +166,9 @@ export default function CaptureScreen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: colors.background,
   },
   safeArea: {
     flex: 1,
-  },
-  backgroundLayer: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
-    zIndex: 0,
   },
   foreground: {
     position: 'relative',

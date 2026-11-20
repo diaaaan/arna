@@ -151,8 +151,7 @@ const styles = StyleSheet.create({
     opacity: 0.8,
   },
   retryButtonText: {
-    ...typography.caption,
-    fontWeight: '600',
+    ...typography.captionStrong,
     color: colors.error,
   },
   successContainer: {
@@ -167,7 +166,7 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
   },
   detailLabel: {
-    fontWeight: '600',
+    fontFamily: typography.captionStrong.fontFamily,
     color: colors.textSecondary,
   },
   itemsContainer: {

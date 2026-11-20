@@ -16,6 +16,16 @@ const palette = {
   transparent: 'rgba(9, 9, 11, 0)',
 } as const;
 
+// Approved fonts (2026-11-20): Outfit for the logo, Geologica for the interface.
+// Text fields keep the platform font. Loaded in app/_layout.tsx.
+export const fonts = {
+  brand: 'Outfit_600SemiBold',
+  light: 'Geologica_300Light',
+  regular: 'Geologica_400Regular',
+  medium: 'Geologica_500Medium',
+  semiBold: 'Geologica_600SemiBold',
+} as const;
+
 export const spacing = {
   xxs: 2,
   xs: 4,
@@ -75,49 +85,57 @@ export const gradients = {
 
 export const typography = {
   appName: {
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: '600',
-    letterSpacing: 1.2,
+    fontFamily: fonts.brand,
+    fontSize: 28,
+    lineHeight: 34,
+    letterSpacing: -0.56,
   },
   title: {
-    fontSize: 42,
-    lineHeight: 49,
-    fontWeight: '500',
-    letterSpacing: -1.1,
+    fontFamily: fonts.light,
+    fontSize: 40,
+    lineHeight: 46,
+    letterSpacing: -1.2,
   },
   sectionTitle: {
-    fontSize: 30,
-    lineHeight: 36,
-    fontWeight: '600',
-    letterSpacing: -0.5,
+    fontFamily: fonts.semiBold,
+    fontSize: 28,
+    lineHeight: 34,
+    letterSpacing: -0.56,
   },
   body: {
+    fontFamily: fonts.regular,
     fontSize: 16,
     lineHeight: 23,
-    fontWeight: '400',
   },
+  // Text fields use the platform font (Roboto on Android, SF Pro on iOS).
   input: {
     fontSize: 18,
     lineHeight: 26,
     fontWeight: '400',
   },
   caption: {
+    fontFamily: fonts.medium,
     fontSize: 12,
     lineHeight: 17,
-    fontWeight: '500',
+    letterSpacing: 0.15,
+  },
+  captionStrong: {
+    fontFamily: fonts.semiBold,
+    fontSize: 12,
+    lineHeight: 17,
     letterSpacing: 0.15,
   },
   button: {
+    fontFamily: fonts.semiBold,
     fontSize: 15,
     lineHeight: 20,
-    fontWeight: '600',
     letterSpacing: 0.1,
   },
   navigationLabel: {
-    fontSize: 13,
-    lineHeight: 18,
-    fontWeight: '600',
+    fontFamily: fonts.medium,
+    fontSize: 12,
+    lineHeight: 16,
+    letterSpacing: 0.3,
   },
 } as const;
 
@@ -176,6 +194,8 @@ export const surfaceReaction = {
   focusSlowdown: 0.55,
   // Transition length, ms.
   focusDuration: 650,
+  // Fraction mixed toward the dark base on text-heavy screens (thoughts, collections).
+  sceneDim: 0.45,
 } as const;
 
 // The "dusk" palette: mostly deep blue and violet, pink and apricot only as
@@ -315,11 +335,12 @@ export const visual = {
   },
 } as const;
 
+// Bottom navigation: a single orb that opens into a blob with the sections.
 export const navigation = {
-  tabBarHeight: spacing.xl * 2 + spacing.sm,
-  tabBarHorizontalInset: spacing.xl,
-  tabBarBottomInset: spacing.md,
-  tabBarItemInset: spacing.xs,
+  // Space reserved at the bottom of scrolling content for the orb.
+  tabBarHeight: 76,
+  tabBarBottomInset: spacing.xs,
+  orbSize: 60,
 } as const;
 
 export const shadows = {

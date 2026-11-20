@@ -18,13 +18,10 @@ import {
 
 import {
   colors,
-  SMEAR_MODE_DEFAULT,
-  smearModes,
   smearPreset,
   smearStyle,
   surfaceReaction,
   visual,
-  type SmearModeName,
 } from '../theme/tokens';
 import { surfaceSignal } from '../theme/surface-signal';
 import { SMEAR_SOURCE } from './living-surface-smear';
@@ -42,13 +39,7 @@ function compileShader(source: string) {
 
 const SMEAR_EFFECT = compileShader(SMEAR_SOURCE);
 
-type AmbientBackgroundProps = {
-  mode?: SmearModeName;
-};
-
-export function AmbientBackground({
-  mode = SMEAR_MODE_DEFAULT,
-}: AmbientBackgroundProps) {
+export function AmbientBackground() {
   const motionPhase = useSharedValue<number>(smearPreset.reducedMotionPhase);
   const slowPhase = useSharedValue<number>(0.2);
   const reduceMotion = useReducedMotion();
@@ -83,7 +74,8 @@ export function AmbientBackground({
   }, [frameCallback, motionPhase, slowPhase, reduceMotion]);
 
   const active = smearStyle;
-  const modeValue = (smearModes[mode] ?? smearModes[SMEAR_MODE_DEFAULT]).value;
+  const focusDim = surfaceReaction.focusDim;
+  const sceneDim = surfaceReaction.sceneDim;
 
   const uniforms = useDerivedValue<Uniforms>(() => ({
     resolution: RESOLUTION,
@@ -105,9 +97,13 @@ export function AmbientBackground({
     cycleAmount: smearPreset.cycleAmount,
     textureAmount: active.textureAmount,
     tonePower: active.tonePower,
-    mode: modeValue,
+    mode: surfaceSignal.mode.value,
     slowPhase: slowPhase.value,
-    focusDim: surfaceReaction.focusDim * surfaceSignal.focus.value,
+    // Typing and text-heavy screens both calm the surface; combine them.
+    focusDim:
+      1 -
+      (1 - focusDim * surfaceSignal.focus.value) *
+        (1 - sceneDim * surfaceSignal.scene.value),
   }));
 
   return (
