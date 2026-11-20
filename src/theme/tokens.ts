@@ -344,6 +344,7 @@ export const navigation = {
   tabBarHeight: 72,
   tabBarBottomInset: 0,
   orbSize: 124,
+  orbWidth: 184,
 } as const;
 
 export const shadows = {

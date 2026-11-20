@@ -1,8 +1,6 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Pressable,
   StyleSheet,
   Text,
   View,
@@ -24,11 +22,10 @@ import {
   type CollectionListItem,
 } from '../../src/features/collections/collection-list';
 import {
-  CATEGORY_NAV_WIDTH,
-  CategoryNav,
-  type CategoryNavItem,
-  type CategoryNavVariant,
-} from '../../src/features/collections/category-nav';
+  CATEGORY_WHEEL_WIDTH,
+  CategoryWheel,
+  type CategoryWheelItem,
+} from '../../src/features/collections/category-wheel';
 import { ShoppingCollectionList } from '../../src/features/collections/shopping-collection-list';
 import { TaskCollectionList } from '../../src/features/collections/task-collection-list';
 import { loadIdeaItems } from '../../src/storage/idea-storage';
@@ -46,7 +43,6 @@ import { loadUnsortedThoughts } from '../../src/storage/unsorted-storage';
 import {
   colors,
   navigation,
-  radius,
   spacing,
   typography,
 } from '../../src/theme/tokens';
@@ -58,13 +54,7 @@ const filters = [
   { id: 'ideas', label: 'Ideas', icon: 'bulb-outline' },
   { id: 'quotes', label: 'Quotes', icon: 'chatbox-ellipses-outline' },
   { id: 'unsorted', label: 'Unsorted', icon: 'help-circle-outline' },
-] as const satisfies readonly CategoryNavItem[];
-
-const NAV_VARIANT_KEY = 'arna.ui.collections-nav';
-const NAV_VARIANTS: Record<CategoryNavVariant, { next: CategoryNavVariant; label: string }> = {
-  wheel: { next: 'tabs', label: 'Wheel' },
-  tabs: { next: 'wheel', label: 'Tabs' },
-};
+] as const satisfies readonly CategoryWheelItem[];
 
 type Filter = (typeof filters)[number]['id'];
 type LoadState = 'loading' | 'ready' | 'error';
@@ -125,26 +115,7 @@ export default function CollectionsScreen() {
     Record<string, InterpretationCategory>
   >({});
   const insets = useSafeAreaInsets();
-  const [navVariant, setNavVariant] = useState<CategoryNavVariant>('wheel');
   const [navHeight, setNavHeight] = useState(0);
-
-  useEffect(() => {
-    AsyncStorage.getItem(NAV_VARIANT_KEY)
-      .then((stored) => {
-        if (stored === 'wheel' || stored === 'tabs') {
-          setNavVariant(stored);
-        }
-      })
-      .catch(() => undefined);
-  }, []);
-
-  const toggleNavVariant = useCallback(() => {
-    setNavVariant((current) => {
-      const next = NAV_VARIANTS[current].next;
-      AsyncStorage.setItem(NAV_VARIANT_KEY, next).catch(() => undefined);
-      return next;
-    });
-  }, []);
 
   const selectedLabel =
     filters.find((filter) => filter.id === selectedFilter)?.label ?? 'All';
@@ -377,28 +348,16 @@ export default function CollectionsScreen() {
           <Text style={styles.headerOverline}>Collections</Text>
           <Text style={styles.headerTitle}>{selectedLabel}</Text>
         </View>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`Navigation style: ${NAV_VARIANTS[navVariant].label}. Switch`}
-          onPress={toggleNavVariant}
-          hitSlop={spacing.sm}
-          style={({ pressed }) => [styles.variantToggle, pressed && styles.filterPressed]}
-        >
-          <Text style={styles.variantToggleText}>
-            {NAV_VARIANTS[navVariant].label}
-          </Text>
-        </Pressable>
       </View>
       <View
         style={styles.content}
         onLayout={(event) => setNavHeight(event.nativeEvent.layout.height - bottomPadding)}
       >
-        <View style={[styles.list, { marginRight: CATEGORY_NAV_WIDTH[navVariant] - spacing.md }]}>
+        <View style={[styles.list, { marginRight: CATEGORY_WHEEL_WIDTH - spacing.md }]}>
           {renderCollection()}
         </View>
         {navHeight > 0 ? (
-          <CategoryNav
-            variant={navVariant}
+          <CategoryWheel
             items={filters}
             selectedId={selectedFilter}
             onSelect={(id) => setSelectedFilter(id as Filter)}
@@ -435,21 +394,6 @@ const styles = StyleSheet.create({
   headerTitle: {
     ...typography.sectionTitle,
     color: colors.textPrimary,
-  },
-  variantToggle: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: radius.full,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255, 255, 255, 0.18)',
-    backgroundColor: 'rgba(255, 255, 255, 0.06)',
-  },
-  variantToggleText: {
-    ...typography.navigationLabel,
-    color: colors.textSecondary,
-  },
-  filterPressed: {
-    opacity: 0.7,
   },
   content: {
     flex: 1,

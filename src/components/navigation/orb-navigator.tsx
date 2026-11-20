@@ -3,11 +3,15 @@ import {
   Blur,
   Canvas,
   Circle,
+  Fill,
+  Oval,
   Path,
   RadialGradient,
+  Shader,
   Skia,
   vec,
 } from '@shopify/react-native-skia';
+import type { Uniforms } from '@shopify/react-native-skia';
 import * as Haptics from 'expo-haptics';
 import type { Tabs } from 'expo-router';
 import {
@@ -44,6 +48,7 @@ import Animated, {
 
 import { surfaceSignal } from '../../theme/surface-signal';
 import { colors, navigation, surfaceReaction, typography } from '../../theme/tokens';
+import { GLASS_BLOB_SOURCE, HIDDEN_CIRCLE } from '../glass-blob';
 
 type TabBarProps = Parameters<
   NonNullable<ComponentProps<typeof Tabs>['tabBar']>
@@ -68,13 +73,19 @@ const SECTIONS: readonly Section[] = [
 ];
 
 // Geometry, in points. The box spans the screen width and sits on its bottom edge.
-const BOX_H = 340;
-const ORB_R = navigation.orbSize / 2;
-const ARC_R = 158;
+const BOX_H = 350;
+// The orb is an oval, wider than tall.
+const ORB_RX = navigation.orbWidth / 2;
+const ORB_RY = navigation.orbSize / 2;
+const ORB_CANVAS_W = navigation.orbWidth + 70;
+const ORB_CANVAS_H = navigation.orbSize + 70;
+const CORE_R = 104;
+const ARC_R = 162;
 const LOBE = 84;
+const LOBE_R = 40;
+const LOBE_GROW = 10;
 const HIT_R = 50;
-const ARC_GAP_DEG = 15;
-const ORB_CANVAS = navigation.orbSize + 70;
+const ARC_GAP_DEG = 16;
 
 // A quick press without movement opens the menu and leaves it open for taps.
 const TAP_MS = 220;
@@ -87,6 +98,14 @@ const ORB_STOPS = [0, 0.22, 0.5, 0.78, 1];
 const OPEN_SPRING = { damping: 17, stiffness: 180, mass: 0.85 };
 const FOCUS_SPRING = { damping: 18, stiffness: 260 };
 const CLOSE_TIMING = { duration: 220, easing: Easing.in(Easing.cubic) };
+
+const BLOB_EFFECT = (() => {
+  try {
+    return Skia.RuntimeEffect.Make(GLASS_BLOB_SOURCE);
+  } catch {
+    return null;
+  }
+})();
 
 function lobeProgress(progress: number, index: number) {
   'worklet';
@@ -254,8 +273,8 @@ export function OrbNavigator({ state, navigateToTab, insets }: TabBarProps) {
       startedAt: Date.now(),
       startX: pageX,
       startY: pageY,
-      originX: pageX - locationX - (orb.x - ORB_CANVAS / 2),
-      originY: pageY - locationY - (orb.y - ORB_CANVAS / 2),
+      originX: pageX - locationX - (orb.x - ORB_CANVAS_W / 2),
+      originY: pageY - locationY - (orb.y - ORB_CANVAS_H / 2),
       wasOpen: isOpen,
       moved: false,
       index: -1,
@@ -316,6 +335,37 @@ export function OrbNavigator({ state, navigateToTab, insets }: TabBarProps) {
     goTo(g.index);
   };
 
+  // Glass bubbles: a core around the orb and one bubble per section, merged
+  // like metaballs; the bubble under the finger swells.
+  const blobUniforms = useDerivedValue<Uniforms>(() => {
+    const p = progress.value;
+    const pc = Math.min(p, 1.08);
+    const lobe = (i: number) => {
+      const q = lobeProgress(p, i);
+      const target = lobes[i];
+      const w =
+        focusAmount.value * Math.max(0, 1 - Math.abs(focusIndex.value - i));
+      const r = LOBE_R + LOBE_GROW * w;
+      const startR = ORB_RY * 0.6;
+      return [
+        orb.x + (target.x - orb.x) * q,
+        orb.y + (target.y - orb.y) * q,
+        startR + (r - startR) * Math.min(q, 1.06),
+      ];
+    };
+    return {
+      size: [width, BOX_H],
+      c0: [orb.x, orb.y, ORB_RY + (CORE_R - ORB_RY) * pc],
+      c1: lobe(0),
+      c2: lobe(1),
+      c3: lobe(2),
+      c4: HIDDEN_CIRCLE,
+      c5: HIDDEN_CIRCLE,
+      smoothness: 40,
+      alpha: Math.min(1, p * 4),
+    };
+  });
+
   const arcEnd = useDerivedValue(() =>
     interpolate(progress.value, [0.3, 1], [0, 1], 'clamp'),
   );
@@ -330,7 +380,7 @@ export function OrbNavigator({ state, navigateToTab, insets }: TabBarProps) {
     return {
       opacity: 1 - hidden.value,
       transform: [
-        { translateY: (ORB_R + 24) * hidden.value },
+        { translateY: (ORB_RY + 24) * hidden.value },
         { scale: (1 + 0.025 * breath.value) * (1 + 0.06 * p) },
       ],
     };
@@ -360,6 +410,11 @@ export function OrbNavigator({ state, navigateToTab, insets }: TabBarProps) {
 
       <View pointerEvents="box-none" style={[styles.box, { width }]}>
         <Canvas pointerEvents="none" style={[styles.canvas, { width }]}>
+          {BLOB_EFFECT ? (
+            <Fill>
+              <Shader source={BLOB_EFFECT} uniforms={blobUniforms} />
+            </Fill>
+          ) : null}
           <Path
             path={arcPath}
             style="stroke"
@@ -404,7 +459,12 @@ export function OrbNavigator({ state, navigateToTab, insets }: TabBarProps) {
           onAccessibilityTap={() => (isOpen ? close() : open())}
           style={[
             styles.orbWrap,
-            { left: orb.x - ORB_CANVAS / 2, top: orb.y - ORB_CANVAS / 2 },
+            {
+              left: orb.x - ORB_CANVAS_W / 2,
+              top: orb.y - ORB_CANVAS_H / 2,
+              width: ORB_CANVAS_W,
+              height: ORB_CANVAS_H,
+            },
             orbStyle,
           ]}
           onStartShouldSetResponder={() => true}
@@ -416,30 +476,37 @@ export function OrbNavigator({ state, navigateToTab, insets }: TabBarProps) {
           onResponderTerminate={close}
         >
           <Canvas pointerEvents="none" style={styles.orbCanvas}>
-            <Circle
-              cx={ORB_CANVAS / 2}
-              cy={ORB_CANVAS / 2}
-              r={ORB_R * 0.95}
-              color="rgba(209, 143, 174, 0.22)"
+            <Oval
+              x={ORB_CANVAS_W / 2 - ORB_RX}
+              y={ORB_CANVAS_H / 2 - ORB_RY + 4}
+              width={ORB_RX * 2}
+              height={ORB_RY * 2}
+              color="rgba(227, 169, 143, 0.38)"
             >
-              <Blur blur={22} />
-            </Circle>
-            <Circle cx={ORB_CANVAS / 2} cy={ORB_CANVAS / 2} r={ORB_R} opacity={0.82}>
+              <Blur blur={18} />
+            </Oval>
+            <Oval
+              x={ORB_CANVAS_W / 2 - ORB_RX}
+              y={ORB_CANVAS_H / 2 - ORB_RY}
+              width={ORB_RX * 2}
+              height={ORB_RY * 2}
+              opacity={0.94}
+            >
               <RadialGradient
-                c={vec(ORB_CANVAS / 2 - ORB_R * 0.18, ORB_CANVAS / 2 - ORB_R * 0.5)}
-                r={ORB_R * 1.55}
+                c={vec(ORB_CANVAS_W / 2 - ORB_RX * 0.15, ORB_CANVAS_H / 2 - ORB_RY * 0.5)}
+                r={ORB_RX * 1.35}
                 colors={ORB_COLORS}
                 positions={ORB_STOPS}
               />
-              <Blur blur={5} />
-            </Circle>
+              <Blur blur={1.2} />
+            </Oval>
             <Circle
-              cx={ORB_CANVAS / 2 - ORB_R * 0.24}
-              cy={ORB_CANVAS / 2 - ORB_R * 0.55}
-              r={ORB_R * 0.2}
-              color="rgba(255, 255, 255, 0.28)"
+              cx={ORB_CANVAS_W / 2 - ORB_RX * 0.25}
+              cy={ORB_CANVAS_H / 2 - ORB_RY * 0.55}
+              r={ORB_RY * 0.2}
+              color="rgba(255, 255, 255, 0.32)"
             >
-              <Blur blur={8} />
+              <Blur blur={7} />
             </Circle>
           </Canvas>
         </Animated.View>
@@ -483,14 +550,9 @@ function Lobe({
       transform: [
         { translateX: (origin.x - position.x) * rest },
         { translateY: (origin.y - position.y) * rest },
-        { scale: (0.6 + 0.4 * appear) * (1 + 0.16 * w) },
+        { scale: (0.6 + 0.4 * appear) * (1 + 0.12 * w) },
       ],
     };
-  });
-
-  const haloStyle = useAnimatedStyle(() => {
-    const w = focusAmount.value * Math.max(0, 1 - Math.abs(focusIndex.value - index));
-    return { opacity: w, transform: [{ scale: 0.75 + 0.25 * w }] };
   });
 
   return (
@@ -502,7 +564,6 @@ function Lobe({
         style,
       ]}
     >
-      <Animated.View pointerEvents="none" style={[styles.halo, haloStyle]} />
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={section.label}
@@ -554,13 +615,6 @@ const styles = StyleSheet.create({
     width: LOBE,
     height: LOBE,
   },
-  halo: {
-    ...StyleSheet.absoluteFill,
-    borderRadius: LOBE / 2,
-    backgroundColor: 'rgba(255, 255, 255, 0.07)',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255, 255, 255, 0.22)',
-  },
   lobePressable: {
     flex: 1,
     alignItems: 'center',
@@ -576,8 +630,6 @@ const styles = StyleSheet.create({
   },
   orbWrap: {
     position: 'absolute',
-    width: ORB_CANVAS,
-    height: ORB_CANVAS,
   },
   orbCanvas: {
     flex: 1,
