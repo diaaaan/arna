@@ -12,10 +12,12 @@ import {
   type InterpretationErrorCode,
 } from '../types/interpretation';
 
-const PRIMARY_MODEL: GeminiModel = 'gemini-3.1-flash-lite';
-// gemini-2.5-flash was retired for new users (404, 2026-11-23); older saved
-// thoughts may still name it, so it stays in GEMINI_MODELS.
-const FALLBACK_MODEL: GeminiModel = 'gemini-3.5-flash-lite';
+// Primary since 2026-11-23: Google recommends 3.5 Flash-Lite for new projects,
+// and 3.1 Flash-Lite kept answering 503 (high demand). gemini-2.5-flash was
+// retired for new users (404); older saved thoughts may still name it, so it
+// stays in GEMINI_MODELS.
+const PRIMARY_MODEL: GeminiModel = 'gemini-3.5-flash-lite';
+const FALLBACK_MODEL: GeminiModel = 'gemini-3.1-flash-lite';
 const REQUEST_TIMEOUT_MS = 20_000;
 const PRIMARY_UNAVAILABLE_STATUSES = new Set([404, 429, 500, 502, 503, 504]);
 
