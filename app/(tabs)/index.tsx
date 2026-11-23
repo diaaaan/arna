@@ -11,10 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import {
-  SubmissionFeedback,
-  type SubmissionFeedbackMessage,
-} from '../../src/components/submission-feedback';
+import { SaveWave, type SaveWaveEvent } from '../../src/components/save-wave';
 import { ThoughtInput } from '../../src/components/thought-input';
 import { analyzeThought } from '../../src/mind/mind-engine';
 import { createThought } from '../../src/entities/thought/thought';
@@ -36,7 +33,7 @@ const TITLE_TAP_COUNT = 3;
 const TITLE_TAP_WINDOW_MS = 900;
 
 export default function CaptureScreen() {
-  const [feedback, setFeedback] = useState<SubmissionFeedbackMessage | null>(
+  const [feedback, setFeedback] = useState<SaveWaveEvent | null>(
     null,
   );
   const feedbackIdRef = useRef(0);
@@ -61,7 +58,7 @@ export default function CaptureScreen() {
   }, []);
 
   const showFeedback = useCallback(
-    (message: string, tone: SubmissionFeedbackMessage['tone']) => {
+    (message: string, tone: SaveWaveEvent['tone']) => {
       feedbackIdRef.current += 1;
       setFeedback({ id: feedbackIdRef.current, message, tone });
     },
@@ -113,11 +110,6 @@ export default function CaptureScreen() {
   const surfaceLabel = smearModes[surfaceMode].label;
 
 
-  const handleFeedbackDismiss = useCallback((id: number) => {
-    setFeedback((currentFeedback) =>
-      currentFeedback?.id === id ? null : currentFeedback,
-    );
-  }, []);
 
   return (
     <View style={styles.root}>
@@ -152,14 +144,11 @@ export default function CaptureScreen() {
 
             <View style={styles.inputArea}>
               <ThoughtInput onSubmit={handleSubmit} />
-              <SubmissionFeedback
-                feedback={feedback}
-                onDismiss={handleFeedbackDismiss}
-              />
             </View>
           </ScrollView>
         </SafeAreaView>
       </KeyboardAvoidingView>
+      <SaveWave event={feedback} />
     </View>
   );
 }
