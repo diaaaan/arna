@@ -26,7 +26,7 @@ uniform float tonePower;
 uniform float mode;
 uniform float slowPhase;
 uniform float focusDim;
-uniform float2 rippleOrigin;
+uniform float4 rippleRect;
 uniform float rippleRadius;
 uniform float rippleAmp;
 uniform float3 rippleTint;
@@ -146,13 +146,29 @@ half4 main(float2 pos) {
     position = pos - n * push + tangent * push * 0.35 * sin(motionPhase * 6.28318530718 * 2.0);
   }
 
+  // The save ripple: a wave that leaves the outline of the text field and runs
+  // outward keeping its shape (a rounded rectangle whose corners soften as it
+  // grows). The matter itself is moved: squeezed and lifted on the crest,
+  // stretched behind it, swirled a little along the front.
+  float rippleCrest = 0.0;
+  float rippleDist = 10000.0;
+  if (rippleAmp > 0.001 || rippleGlow > 0.001) {
+    rippleDist = sdRoundRect(pos, rippleRect, 22.0);
+  }
   if (rippleAmp > 0.001) {
-    float2 rv = pos - rippleOrigin;
-    float rl = max(length(rv), 0.001);
-    float dr = rl - rippleRadius;
-    float band = exp(-dr * dr / 3600.0);
-    float behind = dr < 0.0 ? exp(dr / 140.0) * sin(dr * 0.07) * 0.5 : 0.0;
-    position = pos - (rv / rl) * rippleAmp * (band + behind);
+    float2 e = float2(1.5, 0.0);
+    float2 n = float2(
+      sdRoundRect(pos + e.xy, rippleRect, 22.0) - sdRoundRect(pos - e.xy, rippleRect, 22.0),
+      sdRoundRect(pos + e.yx, rippleRect, 22.0) - sdRoundRect(pos - e.yx, rippleRect, 22.0)
+    );
+    n = n / max(length(n), 0.0001);
+    float dr = rippleDist - rippleRadius;
+    float env = exp(-dr * dr / 9000.0) + (dr < 0.0 ? exp(dr / 200.0) * 0.55 : 0.0);
+    float swell = sin(dr * 0.036);
+    float2 tangent = float2(-n.y, n.x);
+    position = position - n * rippleAmp * swell * env
+      + tangent * rippleAmp * 0.45 * env * cos(dr * 0.02 + pos.x * 0.004);
+    rippleCrest = env * max(-swell, 0.0) * clamp(rippleAmp / 40.0, 0.0, 1.0);
   }
   float2 uv = position / resolution;
   float aspect = resolution.x / resolution.y;
@@ -210,16 +226,23 @@ half4 main(float2 pos) {
     col = mix(col, backgroundColor * 0.6, shade);
   }
 
-  // The save ripple colours the matter itself: inside the ring the surface
-  // takes the tint (green when saved, red when not) and glows from within.
+  // The save ripple colours the matter itself: as the wave passes, the
+  // brighter lava catches the colour (green when saved, red when not) and the
+  // dark gaps stay dark. The front follows the lava field, so it reads as the
+  // surface changing colour, not as a ring laid on top.
+  // Where the matter is squeezed on the crest it gets denser and lighter.
+  col *= 1.0 + 0.55 * rippleCrest;
+
+  // The colour belongs to the matter: it seeps into the lava just behind the
+  // moving front (the front itself is uneven, following the lava field), the
+  // brighter paint takes it, the dark gaps stay dark. No band of its own.
   if (rippleGlow > 0.001) {
-    float rl = length(pos - rippleOrigin);
-    float dr = rl - rippleRadius;
-    float ring = exp(-dr * dr / 2200.0);
-    float behind = dr < 0.0 ? exp(dr / 180.0) * (0.55 + 0.45 * cos(dr * 0.07)) : 0.0;
-    float w = clamp((ring + behind * 0.7) * rippleGlow, 0.0, 1.0);
+    float dr = rippleDist - rippleRadius + (h - 0.5) * 260.0 + (v0 - 0.5) * 140.0;
+    float soaked = 1.0 - smoothstep(-160.0, 40.0, dr);
     float lum = dot(col, float3(0.299, 0.587, 0.114));
-    float3 tinted = rippleTint * (0.25 + 1.6 * lum) + rippleTint * ring * 0.35;
+    float matter = smoothstep(0.05, 0.35, lum);
+    float w = clamp(soaked * rippleGlow * matter * 0.9, 0.0, 1.0);
+    float3 tinted = rippleTint * (0.3 + 1.9 * lum);
     col = mix(col, tinted, w);
   }
 

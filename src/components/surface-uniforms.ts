@@ -25,11 +25,12 @@ const RESOLUTION = vec(SURFACE_SIZE.width, SURFACE_SIZE.height);
 const style = smearStyle;
 const focusDim = surfaceReaction.focusDim;
 const homeDim = surfaceReaction.homeDim;
+const homeSoftness = surfaceReaction.homeSoftness;
 const fieldPush = surfaceReaction.fieldPush;
 const sceneDim = surfaceReaction.sceneDim;
 
 export type SurfaceState = {
-  rippleOrigin: [number, number];
+  rippleRect: [number, number, number, number];
   rippleRadius: number;
   rippleAmp: number;
   rippleTint: [number, number, number];
@@ -61,13 +62,13 @@ export function surfaceUniforms(state: SurfaceState): Uniforms {
     noiseScale: smearPreset.noiseScale,
     warpStrength: smearPreset.warpStrength,
     orbitRadius: smearPreset.orbitRadius,
-    grainAmount: style.grainAmount,
+    grainAmount: style.grainAmount * (1 - homeSoftness * 0.6),
     glowAmount: style.glowAmount,
     cycleAmount: smearPreset.cycleAmount,
-    textureAmount: style.textureAmount,
+    textureAmount: style.textureAmount * (1 - homeSoftness),
     tonePower: style.tonePower,
     mode: state.mode,
-    rippleOrigin: state.rippleOrigin,
+    rippleRect: state.rippleRect,
     rippleRadius: state.rippleRadius,
     rippleAmp: state.rippleAmp,
     rippleTint: state.rippleTint,
@@ -93,7 +94,7 @@ export function useSurfaceUniforms() {
     mode,
     focus,
     scene,
-    rippleOrigin,
+    rippleRect,
     rippleRadius,
     rippleAmp,
     rippleTint,
@@ -107,7 +108,7 @@ export function useSurfaceUniforms() {
       mode: mode.value,
       focus: focus.value,
       scene: scene.value,
-      rippleOrigin: rippleOrigin.value,
+      rippleRect: rippleRect.value,
       rippleRadius: rippleRadius.value,
       rippleAmp: rippleAmp.value,
       rippleTint: rippleTint.value,

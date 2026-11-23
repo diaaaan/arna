@@ -15,9 +15,11 @@ export const surfaceSignal = {
   // Shared so glass elements can refract the same picture.
   motionPhase: makeMutable<number>(smearPreset.reducedMotionPhase),
   slowPhase: makeMutable(0.2),
-  // A ripple through the surface: origin in screen points, radius in points,
+  // A ripple through the surface. It starts from the outline of a rounded
+  // rectangle (the text field, [x, y, width, height] in screen points) and
+  // runs outward, keeping that shape; radius = how far it has gone, points;
   // strength in points of displacement (0 = no ripple).
-  rippleOrigin: makeMutable<[number, number]>([0, 0]),
+  rippleRect: makeMutable<[number, number, number, number]>([0, 0, 0, 0]),
   rippleRadius: makeMutable(0),
   rippleAmp: makeMutable(0),
   // Colour the ripple paints into the matter, and how strongly (0..1).

@@ -50,10 +50,7 @@ export function AmbientBackground() {
   }, [frameCallback, motionPhase, slowPhase, reduceMotion]);
 
   const sceneBlur = surfaceReaction.sceneBlur;
-  const homeBlur = surfaceReaction.homeBlur;
-  const blur = useDerivedValue(
-    () => homeBlur + (sceneBlur - homeBlur) * scene.value,
-  );
+  const blur = useDerivedValue(() => sceneBlur * scene.value);
   const uniforms = useSurfaceUniforms();
 
   return (
