@@ -26,10 +26,16 @@ half4 main(float2 p) {
   float len = length(v);
   float maxR = min(size.x, size.y) * 0.5;
   float fade = 1.0 - smoothstep(maxR * 0.45, maxR, len);
+  // Rings are thin crisp lines (about 2 pt, antialiased over 1 pt) with a
+  // faint halo, not soft gradients, so the orb reads sharp.
+  float period = 6.2831853 / 0.15;
   float phase = len * 0.15 - time * 6.2831853 * 2.0;
-  float ring = pow(0.5 + 0.5 * sin(phase), 10.0);
-  float strength = 0.14 + 0.3 * wobble;
-  float core = (1.0 - smoothstep(radius * 0.12, radius * 0.2, len)) * 0.35;
+  float u = fract((phase - 1.5707963) / 6.2831853 + 0.5) - 0.5;
+  float dpt = abs(u) * period;
+  float ring = (1.0 - smoothstep(0.6, 1.6, dpt)) + 0.22 * exp(-dpt * dpt / 14.0);
+  float strength = 0.2 + 0.35 * wobble;
+  float dotR = radius * 0.16;
+  float core = (1.0 - smoothstep(dotR - 1.0, dotR + 0.5, len)) * 0.45;
   float a = clamp(ring * fade * strength + core, 0.0, 1.0);
   return half4(float3(0.92, 0.9, 1.0) * a * alpha, a * alpha);
 }

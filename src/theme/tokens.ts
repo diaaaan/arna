@@ -193,9 +193,6 @@ export const surfaceReaction = {
   // The capture screen too keeps the surface soft and a little dim, so it does
   // not pull the eye away from writing.
   homeDim: 0.18,
-  // Softness on the capture screen: fine paint texture and grain are toned
-  // down in the shader (a blur filter here also softened the nav orb).
-  homeSoftness: 0.75,
   // How far the surface is pushed away around the text field, points.
   fieldPush: 34,
   // How much slower the surface moves while the field is focused (0 = no change).

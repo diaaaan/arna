@@ -25,7 +25,6 @@ const RESOLUTION = vec(SURFACE_SIZE.width, SURFACE_SIZE.height);
 const style = smearStyle;
 const focusDim = surfaceReaction.focusDim;
 const homeDim = surfaceReaction.homeDim;
-const homeSoftness = surfaceReaction.homeSoftness;
 const fieldPush = surfaceReaction.fieldPush;
 const sceneDim = surfaceReaction.sceneDim;
 
@@ -62,10 +61,10 @@ export function surfaceUniforms(state: SurfaceState): Uniforms {
     noiseScale: smearPreset.noiseScale,
     warpStrength: smearPreset.warpStrength,
     orbitRadius: smearPreset.orbitRadius,
-    grainAmount: style.grainAmount * (1 - homeSoftness * 0.6),
+    grainAmount: style.grainAmount,
     glowAmount: style.glowAmount,
     cycleAmount: smearPreset.cycleAmount,
-    textureAmount: style.textureAmount * (1 - homeSoftness),
+    textureAmount: style.textureAmount,
     tonePower: style.tonePower,
     mode: state.mode,
     rippleRect: state.rippleRect,
