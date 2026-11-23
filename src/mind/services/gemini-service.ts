@@ -138,6 +138,20 @@ async function requestInterpretation(
     debugLog('Response time (ms)', Date.now() - startedAt);
 
     if (!response.ok) {
+      if (__DEV__) {
+        // Development only: status and Google's own error text (never the key).
+        const body = await response.text().catch(() => '');
+        let reason = body.slice(0, 300);
+        try {
+          const parsed = JSON.parse(body) as {
+            error?: { status?: string; message?: string };
+          };
+          reason = `${parsed.error?.status ?? ''} ${parsed.error?.message ?? ''}`.trim();
+        } catch {
+          // keep the raw text
+        }
+        debugLog(`HTTP ${response.status} from ${model}`, reason);
+      }
       throw new GeminiServiceError(mapHttpError(response.status), model, response.status);
     }
 

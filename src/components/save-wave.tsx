@@ -38,6 +38,8 @@ const DURATION = 1900;
 // Share of the animation the ring needs to reach the farthest corner.
 const RING_SHARE = 0.55;
 const SURFACE_PUSH = 48;
+// How far past the farthest screen corner the surface wave travels, points.
+const EXIT_BEYOND = 320;
 
 const WAVE_SOURCE = `
 uniform float2 size;
@@ -111,23 +113,32 @@ export function SaveWave({ event }: SaveWaveProps) {
   const progress = useSharedValue(1);
   const tone = event?.tone ?? 'success';
   // The wave starts from the outline of the text field and keeps its shape.
-  const field = surfaceSignal.fieldRect.get();
+  // The field is read on the UI thread (never during render).
+  const { fieldRect, fieldRadius } = surfaceSignal;
   const fallback = event?.origin ?? [width / 2, height * 0.45];
-  const rect: [number, number, number, number] =
-    field[2] > 0 ? field : [fallback[0] - 60, fallback[1] - 24, 120, 48];
-  const maxR = Math.max(
-    ...[
+  const geometry = useDerivedValue(() => {
+    const field = fieldRect.value;
+    const rect: [number, number, number, number] =
+      field[2] > 0 ? field : [fallback[0] - 60, fallback[1] - 24, 120, 48];
+    const cx = rect[0] + rect[2] / 2;
+    const cy = rect[1] + rect[3] / 2;
+    let maxR = 0;
+    for (const [px, py] of [
       [0, 0],
       [width, 0],
       [0, height],
       [width, height],
-    ].map(([px, py]) =>
-      Math.hypot(
-        Math.max(Math.abs(px - (rect[0] + rect[2] / 2)) - rect[2] / 2, 0),
-        Math.max(Math.abs(py - (rect[1] + rect[3] / 2)) - rect[3] / 2, 0),
-      ),
-    ),
-  );
+    ]) {
+      maxR = Math.max(
+        maxR,
+        Math.hypot(
+          Math.max(Math.abs(px - cx) - rect[2] / 2, 0),
+          Math.max(Math.abs(py - cy) - rect[3] / 2, 0),
+        ),
+      );
+    }
+    return { rect, maxR };
+  });
 
   useEffect(() => {
     if (!event) {
@@ -155,10 +166,13 @@ export function SaveWave({ event }: SaveWaveProps) {
       rippleGlow.set(0);
       return;
     }
+    const { rect, maxR } = geometry.value;
     const ringT = Math.min(1, t / RING_SHARE);
     rippleRect.set(rect);
     rippleTint.set(tint);
-    rippleRadius.set(maxR * (1 - (1 - ringT) * (1 - ringT)));
+    // The wave runs on past the screen edges instead of stopping at the
+    // farthest one, so its colour leaves the screen rather than pooling there.
+    rippleRadius.set((maxR + EXIT_BEYOND) * (1 - (1 - ringT) * (1 - ringT)));
     rippleAmp.set(reduceMotion ? 0 : SURFACE_PUSH * (1 - t));
     // The colour lingers a little after the ring has passed, then fades.
     rippleGlow.set(
@@ -170,9 +184,9 @@ export function SaveWave({ event }: SaveWaveProps) {
 
   const uniforms = useDerivedValue<Uniforms>(() => ({
     size: [width, height],
-    rect,
-    rad: surfaceSignal.fieldRadius.get(),
-    maxR,
+    rect: geometry.value.rect,
+    rad: fieldRadius.value,
+    maxR: geometry.value.maxR,
     // With reduced motion only the rim shows, without the ring.
     progress: reduceMotion ? 0.55 + progress.value * 0.45 : progress.value,
     tint,
