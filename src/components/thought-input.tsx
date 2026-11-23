@@ -53,7 +53,8 @@ export function ThoughtInput({ onSubmit }: ThoughtInputProps) {
     requestAnimationFrame(() => {
       frameRef.current?.measureInWindow((x, y, width, height) => {
         if (width > 0) {
-          surfaceSignal.fieldRect.set([x, y, width, height]);
+          const [ox, oy] = surfaceSignal.surfaceOffset.get();
+          surfaceSignal.fieldRect.set([x - ox, y - oy, width, height]);
         }
       });
     });

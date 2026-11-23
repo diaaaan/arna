@@ -28,4 +28,8 @@ export const surfaceSignal = {
   // The text field the surface flows around: [x, y, width, height] in screen
   // points (width 0 = none).
   fieldRect: makeMutable<[number, number, number, number]>([0, 0, 0, 0]),
+  // Where the surface canvas sits in the window (measureInWindow). On Android
+  // window coordinates may leave out the status bar, so field positions are
+  // taken relative to the canvas, measured the same way.
+  surfaceOffset: makeMutable<[number, number]>([0, 0]),
 };

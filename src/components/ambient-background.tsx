@@ -1,15 +1,19 @@
-import { useEffect } from 'react';
-import { StyleSheet } from 'react-native';
-import { Blur, Canvas, Fill, Rect, Shader } from '@shopify/react-native-skia';
+import { useEffect, useRef, type ComponentRef } from "react";
+import { StyleSheet, View } from "react-native";
+import { Blur, Canvas, Fill, Rect, Shader } from "@shopify/react-native-skia";
 import {
   useDerivedValue,
   useFrameCallback,
   useReducedMotion,
-} from 'react-native-reanimated';
+} from "react-native-reanimated";
 
-import { colors, smearPreset, surfaceReaction } from '../theme/tokens';
-import { surfaceSignal } from '../theme/surface-signal';
-import { SURFACE_EFFECT, SURFACE_SIZE, useSurfaceUniforms } from './surface-uniforms';
+import { colors, smearPreset, surfaceReaction } from "../theme/tokens";
+import { surfaceSignal } from "../theme/surface-signal";
+import {
+  SURFACE_EFFECT,
+  SURFACE_SIZE,
+  useSurfaceUniforms,
+} from "./surface-uniforms";
 
 export function AmbientBackground() {
   const reduceMotion = useReducedMotion();
@@ -22,11 +26,10 @@ export function AmbientBackground() {
   const lavaDuration = smearPreset.lavaDuration;
   const focusSlowdown = surfaceReaction.focusSlowdown;
   const frameCallback = useFrameCallback((frame) => {
-    'worklet';
+    "worklet";
     const dt = frame.timeSincePreviousFrame ?? 0;
     // Other sections freeze the surface; it only lives on the capture screen.
-    const speed =
-      (1 - focusSlowdown * focus.value) * (1 - scene.value);
+    const speed = (1 - focusSlowdown * focus.value) * (1 - scene.value);
     if (speed < 0.002) {
       return;
     }
@@ -53,22 +56,41 @@ export function AmbientBackground() {
   const blur = useDerivedValue(() => sceneBlur * scene.value);
   const uniforms = useSurfaceUniforms();
 
+  const frameRef = useRef<ComponentRef<typeof View>>(null);
+  const reportOffset = () => {
+    frameRef.current?.measureInWindow((x, y) => {
+      surfaceSignal.surfaceOffset.set([x, y]);
+    });
+  };
+
   return (
-    <Canvas pointerEvents="none" style={styles.canvas}>
-      <Fill color={colors.background} />
-      {SURFACE_EFFECT ? (
-        <Rect x={0} y={0} width={SURFACE_SIZE.width} height={SURFACE_SIZE.height}>
-          <Shader source={SURFACE_EFFECT} uniforms={uniforms} />
-          <Blur blur={blur} mode="clamp" />
-        </Rect>
-      ) : null}
-    </Canvas>
+    <View
+      ref={frameRef}
+      onLayout={reportOffset}
+      pointerEvents="none"
+      style={styles.canvas}
+    >
+      <Canvas style={StyleSheet.absoluteFill}>
+        <Fill color={colors.background} />
+        {SURFACE_EFFECT ? (
+          <Rect
+            x={0}
+            y={0}
+            width={SURFACE_SIZE.width}
+            height={SURFACE_SIZE.height}
+          >
+            <Shader source={SURFACE_EFFECT} uniforms={uniforms} />
+            <Blur blur={blur} mode="clamp" />
+          </Rect>
+        ) : null}
+      </Canvas>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   canvas: {
-    position: 'absolute',
+    position: "absolute",
     top: 0,
     left: 0,
     width: SURFACE_SIZE.width,
