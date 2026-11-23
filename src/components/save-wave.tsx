@@ -15,50 +15,63 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { kitColors } from '../theme/kit';
+import { surfaceSignal } from '../theme/surface-signal';
 import { colors, typography } from '../theme/tokens';
 
 // Confirmation after a thought is sent (ref: Arna/refs/2026-11-22_save-
-// confirmation-wave.mp4). A wide band of light sweeps up the screen, then the
-// light settles into a glowing rim along the screen edges and fades out.
-// Green (status/success) when the thought is saved, red (status/error) when it
-// is not, so the result reads from the colour alone.
+// confirmation-wave.mp4). A ring of light runs out from the text field in all
+// directions, rippling the Living Surface under it; where it reaches the
+// screen edges, the light settles into a glowing rim that fades out.
+// Green (status/success) when saved, red (status/error) when not.
+// Earlier bottom-to-top sweep: archive/animations/save-wave-sweep-v1.tsx.archived.
 
 export type SaveWaveEvent = {
   id: number;
   tone: 'success' | 'error';
   message: string;
+  // Where the ripple starts, in screen points (the text field).
+  origin?: [number, number];
 };
 
-const DURATION = 1700;
+const DURATION = 1900;
+// Share of the animation the ring needs to reach the farthest corner.
+const RING_SHARE = 0.55;
+const SURFACE_PUSH = 22;
 
 const WAVE_SOURCE = `
 uniform float2 size;
+uniform float2 origin;
+uniform float maxR;
 uniform float progress;
 uniform float3 tint;
 
 half4 main(float2 p) {
-  float2 uv = p / size;
   float t = progress;
-  float wave = clamp(t / 0.5, 0.0, 1.0);
-  wave = 1.0 - pow(1.0 - wave, 2.2);
-  float front = mix(1.25, -0.35, wave) + 0.48 * (uv.x - 0.5) * (uv.x - 0.5);
-  float dy = uv.y - front;
-  float core = exp(-dy * dy / 0.0018);
-  float glow = exp(-dy * dy / 0.02);
-  float trail = dy > 0.0 ? exp(-dy / 0.22) * 0.35 : 0.0;
-  float waveFade = 1.0 - smoothstep(0.42, 0.6, t);
-  float waveA = (core * 0.85 + glow * 0.45 + trail) * waveFade;
-  float wobble = 1.0 + 0.3 * sin(uv.y * 9.0 + t * 6.0) * sin(uv.x * 7.0 - t * 4.0);
+  float ringT = clamp(t / ${RING_SHARE.toFixed(2)}, 0.0, 1.0);
+  float r = maxR * (1.0 - pow(1.0 - ringT, 2.0));
+  float dist = length(p - origin);
+  float dr = dist - r;
+
+  // 1. The ring and a few faint wavelets behind it.
+  float core = exp(-dr * dr / 70.0);
+  float glow = exp(-dr * dr / 1600.0);
+  float wavelets = dr < 0.0 ? exp(dr / 110.0) * pow(0.5 + 0.5 * cos(dr * 0.11), 6.0) * 0.4 : 0.0;
+  float ringFade = 1.0 - smoothstep(0.42, 0.62, t);
+  float ringA = (core * 0.85 + glow * 0.4 + wavelets) * ringFade;
+
+  // 2. The rim: an edge lights up once the ring has reached it, then fades.
+  float wobble = 1.0 + 0.3 * sin(p.y * 0.02 + t * 6.0) * sin(p.x * 0.025 - t * 4.0);
   float k = 12.0 * wobble;
   float2 dl = p;
-  float2 dr = size - p;
-  float rimShape = exp(-dl.x / k) + exp(-dr.x / k) + exp(-dl.y / k) + exp(-dr.y / k);
-  rimShape += 0.3 * (exp(-dl.x / 44.0) + exp(-dr.x / 44.0) + exp(-dl.y / 44.0) + exp(-dr.y / 44.0));
-  float rimIn = smoothstep(0.3, 0.5, t);
-  float rimOut = 1.0 - smoothstep(0.62, 1.0, t);
-  float rimA = rimShape * rimIn * rimOut * 0.65;
-  float a = clamp(waveA + rimA, 0.0, 1.0);
-  float3 col = mix(tint, float3(1.0), core * 0.55 * waveFade);
+  float2 drr = size - p;
+  float rimShape = exp(-dl.x / k) + exp(-drr.x / k) + exp(-dl.y / k) + exp(-drr.y / k);
+  rimShape += 0.3 * (exp(-dl.x / 44.0) + exp(-drr.x / 44.0) + exp(-dl.y / 44.0) + exp(-drr.y / 44.0));
+  float reached = smoothstep(-30.0, 60.0, r - dist);
+  float rimOut = 1.0 - smoothstep(0.6, 1.0, t);
+  float rimA = rimShape * reached * rimOut * 0.65;
+
+  float a = clamp(ringA + rimA, 0.0, 1.0);
+  float3 col = mix(tint, float3(1.0), core * 0.5 * ringFade);
   return half4(col * a, a);
 }
 `;
@@ -90,6 +103,13 @@ export function SaveWave({ event }: SaveWaveProps) {
   const reduceMotion = useReducedMotion();
   const progress = useSharedValue(1);
   const tone = event?.tone ?? 'success';
+  const origin: [number, number] = event?.origin ?? [width / 2, height * 0.45];
+  const maxR = Math.max(
+    Math.hypot(origin[0], origin[1]),
+    Math.hypot(width - origin[0], origin[1]),
+    Math.hypot(origin[0], height - origin[1]),
+    Math.hypot(width - origin[0], height - origin[1]),
+  );
 
   useEffect(() => {
     if (!event) {
@@ -97,10 +117,7 @@ export function SaveWave({ event }: SaveWaveProps) {
     }
     progress.set(0);
     progress.set(
-      withTiming(1, {
-        duration: reduceMotion ? 900 : DURATION,
-        easing: Easing.linear,
-      }),
+      withTiming(1, { duration: reduceMotion ? 900 : DURATION, easing: Easing.linear }),
     );
     void Haptics.notificationAsync(
       event.tone === 'success'
@@ -109,22 +126,38 @@ export function SaveWave({ event }: SaveWaveProps) {
     ).catch(() => undefined);
   }, [event, progress, reduceMotion]);
 
+  // Ripple the living surface along with the ring of light.
+  const { rippleOrigin, rippleRadius, rippleAmp } = surfaceSignal;
+  useDerivedValue(() => {
+    const t = progress.value;
+    if (reduceMotion || t >= 1) {
+      rippleAmp.set(0);
+      return;
+    }
+    const ringT = Math.min(1, t / RING_SHARE);
+    rippleOrigin.set(origin);
+    rippleRadius.set(maxR * (1 - (1 - ringT) * (1 - ringT)));
+    rippleAmp.set(SURFACE_PUSH * (1 - t));
+  });
+
   const tint = TINTS[tone];
   const uniforms = useDerivedValue<Uniforms>(() => ({
     size: [width, height],
-    // With reduced motion only the rim shows, without the sweep.
-    progress: reduceMotion ? 0.45 + progress.value * 0.55 : progress.value,
+    origin,
+    maxR,
+    // With reduced motion only the rim shows, without the ring.
+    progress: reduceMotion ? 0.55 + progress.value * 0.45 : progress.value,
     tint,
   }));
 
   const badgeStyle = useAnimatedStyle(() => {
     const p = progress.value;
     const show =
-      interpolate(p, [0.28, 0.42], [0, 1], 'clamp') *
+      interpolate(p, [0.18, 0.32], [0, 1], 'clamp') *
       (1 - interpolate(p, [0.8, 1], [0, 1], 'clamp'));
     return {
       opacity: show,
-      transform: [{ scale: 0.7 + 0.3 * interpolate(p, [0.28, 0.48], [0, 1], 'clamp') }],
+      transform: [{ scale: 0.7 + 0.3 * interpolate(p, [0.18, 0.4], [0, 1], 'clamp') }],
     };
   });
 
@@ -149,7 +182,10 @@ export function SaveWave({ event }: SaveWaveProps) {
         <View
           style={[
             styles.badgeIcon,
-            { backgroundColor: tone === 'success' ? kitColors.status.success : kitColors.status.error },
+            {
+              backgroundColor:
+                tone === 'success' ? kitColors.status.success : kitColors.status.error,
+            },
           ]}
         >
           <Ionicons

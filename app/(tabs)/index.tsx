@@ -1,5 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ComponentRef,
+} from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -57,13 +63,32 @@ export default function CaptureScreen() {
       .catch(() => undefined);
   }, []);
 
+  // The save ripple starts from the text field.
+  const inputAreaRef = useRef<ComponentRef<typeof View>>(null);
   const showFeedback = useCallback(
     (message: string, tone: SaveWaveEvent['tone']) => {
-      feedbackIdRef.current += 1;
-      setFeedback({ id: feedbackIdRef.current, message, tone });
+      const show = (origin?: [number, number]) => {
+        feedbackIdRef.current += 1;
+        setFeedback({ id: feedbackIdRef.current, message, tone, origin });
+      };
+      const area = inputAreaRef.current;
+      if (!area) {
+        show();
+        return;
+      }
+      area.measureInWindow((x, y, width, height) => {
+        show(width > 0 ? [x + width / 2, y + height * 0.3] : undefined);
+      });
     },
     [],
   );
+
+  // Development only: long-press the question to preview the error state.
+  const previewError = useCallback(() => {
+    if (__DEV__) {
+      showFeedback("Couldn't save this one · Try again", 'error');
+    }
+  }, [showFeedback]);
 
   const handleSubmit = useCallback(async (rawText: string) => {
     const thought = createThought(rawText);
@@ -140,9 +165,14 @@ export default function CaptureScreen() {
             keyboardDismissMode="none"
             keyboardShouldPersistTaps="always"
           >
-            <Text style={styles.title}>What’s on your mind?</Text>
+            <Text
+              style={styles.title}
+              onLongPress={__DEV__ ? previewError : undefined}
+            >
+              What’s on your mind?
+            </Text>
 
-            <View style={styles.inputArea}>
+            <View ref={inputAreaRef} style={styles.inputArea}>
               <ThoughtInput onSubmit={handleSubmit} />
             </View>
           </ScrollView>

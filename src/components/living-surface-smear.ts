@@ -26,6 +26,9 @@ uniform float tonePower;
 uniform float mode;
 uniform float slowPhase;
 uniform float focusDim;
+uniform float2 rippleOrigin;
+uniform float rippleRadius;
+uniform float rippleAmp;
 
 // Lattice-free smooth noise (sines only, no hashing).
 float smoothNoise(float2 p) {
@@ -113,7 +116,19 @@ float lavaField(float2 p, float b) {
   return f;
 }
 
-half4 main(float2 position) {
+half4 main(float2 pos) {
+  // A ripple running outward through the surface (e.g. after a thought is
+  // saved): pixels near the moving ring are pushed along it, with a couple of
+  // fading wavelets behind.
+  float2 position = pos;
+  if (rippleAmp > 0.001) {
+    float2 rv = pos - rippleOrigin;
+    float rl = max(length(rv), 0.001);
+    float dr = rl - rippleRadius;
+    float band = exp(-dr * dr / 3600.0);
+    float behind = dr < 0.0 ? exp(dr / 140.0) * sin(dr * 0.07) * 0.5 : 0.0;
+    position = pos - (rv / rl) * rippleAmp * (band + behind);
+  }
   float2 uv = position / resolution;
   float aspect = resolution.x / resolution.y;
   float a = motionPhase * 6.28318530718;

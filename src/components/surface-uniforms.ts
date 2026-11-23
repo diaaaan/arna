@@ -27,6 +27,9 @@ const focusDim = surfaceReaction.focusDim;
 const sceneDim = surfaceReaction.sceneDim;
 
 export type SurfaceState = {
+  rippleOrigin: [number, number];
+  rippleRadius: number;
+  rippleAmp: number;
   motionPhase: number;
   slowPhase: number;
   mode: number;
@@ -59,6 +62,9 @@ export function surfaceUniforms(state: SurfaceState): Uniforms {
     textureAmount: style.textureAmount,
     tonePower: style.tonePower,
     mode: state.mode,
+    rippleOrigin: state.rippleOrigin,
+    rippleRadius: state.rippleRadius,
+    rippleAmp: state.rippleAmp,
     slowPhase: state.slowPhase,
     // Typing and other sections both calm the surface; combine them.
     focusDim:
@@ -70,7 +76,16 @@ export function surfaceUniforms(state: SurfaceState): Uniforms {
 
 // Uniforms for the surface shader that follow the shared signals.
 export function useSurfaceUniforms() {
-  const { motionPhase, slowPhase, mode, focus, scene } = surfaceSignal;
+  const {
+    motionPhase,
+    slowPhase,
+    mode,
+    focus,
+    scene,
+    rippleOrigin,
+    rippleRadius,
+    rippleAmp,
+  } = surfaceSignal;
   return useDerivedValue<Uniforms>(() =>
     surfaceUniforms({
       motionPhase: motionPhase.value,
@@ -78,6 +93,9 @@ export function useSurfaceUniforms() {
       mode: mode.value,
       focus: focus.value,
       scene: scene.value,
+      rippleOrigin: rippleOrigin.value,
+      rippleRadius: rippleRadius.value,
+      rippleAmp: rippleAmp.value,
     }),
   );
 }
