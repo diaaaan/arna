@@ -10,14 +10,14 @@ type TaskCollectionListProps = {
 };
 
 type TaskSection = {
-  title: 'Done' | null;
+  title: 'done' | null;
   data: Task[];
 };
 
 function formatDueDate(dueDate: string) {
   const [year, month, day] = dueDate.split('-').map(Number);
 
-  return new Date(year, month - 1, day).toLocaleDateString();
+  return new Date(year, month - 1, day).toLocaleDateString().toLowerCase();
 }
 
 export function TaskCollectionList({
@@ -32,7 +32,7 @@ export function TaskCollectionList({
       ? [{ title: null, data: activeTasks } satisfies TaskSection]
       : []),
     ...(completedTasks.length > 0
-      ? [{ title: 'Done', data: completedTasks } satisfies TaskSection]
+      ? [{ title: 'done', data: completedTasks } satisfies TaskSection]
       : []),
   ];
 
@@ -42,7 +42,7 @@ export function TaskCollectionList({
       keyExtractor={(task) => task.id}
       ListEmptyComponent={
         <View style={styles.stateContainer}>
-          <Text style={styles.stateText}>No tasks yet.</Text>
+          <Text style={styles.stateText}>no tasks yet.</Text>
         </View>
       }
       renderItem={({ item }) => (

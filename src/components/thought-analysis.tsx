@@ -14,42 +14,42 @@ type ThoughtAnalysisProps = {
 };
 
 const typeLabels: Record<InterpretationType, string> = {
-  task: 'Task',
-  shopping_list: 'Shopping list',
-  idea: 'Idea',
-  note: 'Note',
-  quote: 'Quote',
-  reminder: 'Reminder',
-  project: 'Project',
-  unknown: 'Unclear',
+  task: 'task',
+  shopping_list: 'shopping list',
+  idea: 'idea',
+  note: 'note',
+  quote: 'quote',
+  reminder: 'reminder',
+  project: 'project',
+  unknown: 'unclear',
 };
 
 const categoryLabels: Record<InterpretationCategory, string> = {
-  work: 'Work',
-  home: 'Home',
-  health: 'Health',
-  finance: 'Finance',
-  learning: 'Learning',
-  creativity: 'Creativity',
-  personal: 'Personal',
-  unknown: 'Unclear',
+  work: 'work',
+  home: 'home',
+  health: 'health',
+  finance: 'finance',
+  learning: 'learning',
+  creativity: 'creativity',
+  personal: 'personal',
+  unknown: 'unclear',
 };
 
 const urgencyLabels: Record<InterpretationUrgency, string> = {
-  low: 'Low',
-  medium: 'Medium',
-  high: 'High',
-  unknown: 'Unclear',
+  low: 'low',
+  medium: 'medium',
+  high: 'high',
+  unknown: 'unclear',
 };
 
 function formatDueDate(dueDate: string) {
   if (/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
     const [year, month, day] = dueDate.split('-').map(Number);
 
-    return new Date(year, month - 1, day).toLocaleDateString();
+    return new Date(year, month - 1, day).toLocaleDateString().toLowerCase();
   }
 
-  return new Date(dueDate).toLocaleString();
+  return new Date(dueDate).toLocaleString().toLowerCase();
 }
 
 function Detail({ label, value }: { label: string; value: string }) {
@@ -63,17 +63,17 @@ function Detail({ label, value }: { label: string; value: string }) {
 
 export function ThoughtAnalysis({ analysis, onRetry }: ThoughtAnalysisProps) {
   if (!analysis) {
-    return <Text style={styles.neutralStatus}>Not sorted yet</Text>;
+    return <Text style={styles.neutralStatus}>not sorted yet</Text>;
   }
 
   if (analysis.status === 'pending') {
-    return <Text style={styles.pendingStatus}>Making sense of it…</Text>;
+    return <Text style={styles.pendingStatus}>making sense of it…</Text>;
   }
 
   if (analysis.status === 'failed') {
     return (
       <View style={styles.failedContainer}>
-        <Text style={styles.failedStatus}>Couldn’t sort this one out</Text>
+        <Text style={styles.failedStatus}>couldn’t sort this one out</Text>
         <Pressable
           accessibilityRole="button"
           onPress={onRetry}
@@ -82,7 +82,7 @@ export function ThoughtAnalysis({ analysis, onRetry }: ThoughtAnalysisProps) {
             pressed && styles.retryButtonPressed,
           ]}
         >
-          <Text style={styles.retryButtonText}>Try again</Text>
+          <Text style={styles.retryButtonText}>try again</Text>
         </Pressable>
       </View>
     );
@@ -90,16 +90,16 @@ export function ThoughtAnalysis({ analysis, onRetry }: ThoughtAnalysisProps) {
 
   return (
     <View style={styles.successContainer}>
-      <Detail label="Type" value={typeLabels[analysis.type]} />
-      <Detail label="Category" value={categoryLabels[analysis.category]} />
-      <Detail label="Urgency" value={urgencyLabels[analysis.urgency]} />
-      <Detail label="Summary" value={analysis.summary} />
+      <Detail label="type" value={typeLabels[analysis.type]} />
+      <Detail label="category" value={categoryLabels[analysis.category]} />
+      <Detail label="urgency" value={urgencyLabels[analysis.urgency]} />
+      <Detail label="summary" value={analysis.summary} />
       {analysis.dueDate ? (
-        <Detail label="Due" value={formatDueDate(analysis.dueDate)} />
+        <Detail label="due" value={formatDueDate(analysis.dueDate)} />
       ) : null}
       {analysis.items.length > 0 ? (
         <View style={styles.itemsContainer}>
-          <Text style={styles.detailLabel}>Items:</Text>
+          <Text style={styles.detailLabel}>items:</Text>
           {analysis.items.map((item, index) => (
             <Text key={`${index}-${item.title}`} style={styles.item}>
               • {item.title}
@@ -109,7 +109,7 @@ export function ThoughtAnalysis({ analysis, onRetry }: ThoughtAnalysisProps) {
         </View>
       ) : null}
       <Detail
-        label="Confidence"
+        label="confidence"
         value={`${Math.round(analysis.confidence * 100)}%${
           analysis.promptVersion
             ? ` · Prompt v${analysis.promptVersion}`

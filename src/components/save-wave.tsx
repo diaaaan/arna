@@ -19,9 +19,10 @@ import { surfaceSignal } from '../theme/surface-signal';
 import { colors, typography } from '../theme/tokens';
 
 // Confirmation after a thought is sent (ref: Arna/refs/2026-11-22_save-
-// confirmation-wave.mp4). A ring of light runs out from the text field in all
-// directions, rippling the Living Surface under it; where it reaches the
-// screen edges, the light settles into a glowing rim that fades out.
+// confirmation-wave.mp4). A ripple runs out from the text field through the
+// Living Surface itself: the matter is pushed and takes the colour as the ring
+// passes (smear shader, via surfaceSignal.ripple*). Where it reaches the screen
+// edges, the light settles into a glowing rim that fades out.
 // Green (status/success) when saved, red (status/error) when not.
 // Earlier bottom-to-top sweep: archive/animations/save-wave-sweep-v1.tsx.archived.
 
@@ -36,7 +37,7 @@ export type SaveWaveEvent = {
 const DURATION = 1900;
 // Share of the animation the ring needs to reach the farthest corner.
 const RING_SHARE = 0.55;
-const SURFACE_PUSH = 22;
+const SURFACE_PUSH = 30;
 
 const WAVE_SOURCE = `
 uniform float2 size;
@@ -52,12 +53,9 @@ half4 main(float2 p) {
   float dist = length(p - origin);
   float dr = dist - r;
 
-  // 1. The ring and a few faint wavelets behind it.
-  float core = exp(-dr * dr / 70.0);
-  float glow = exp(-dr * dr / 1600.0);
-  float wavelets = dr < 0.0 ? exp(dr / 110.0) * pow(0.5 + 0.5 * cos(dr * 0.11), 6.0) * 0.4 : 0.0;
-  float ringFade = 1.0 - smoothstep(0.42, 0.62, t);
-  float ringA = (core * 0.85 + glow * 0.4 + wavelets) * ringFade;
+  // 1. The ring itself is painted into the Living Surface (see the smear
+  // shader); here only a faint sheen rides on its crest.
+  float sheen = exp(-dr * dr / 120.0) * (1.0 - smoothstep(0.4, 0.6, t)) * 0.18;
 
   // 2. The rim: an edge lights up once the ring has reached it, then fades.
   float wobble = 1.0 + 0.3 * sin(p.y * 0.02 + t * 6.0) * sin(p.x * 0.025 - t * 4.0);
@@ -70,8 +68,8 @@ half4 main(float2 p) {
   float rimOut = 1.0 - smoothstep(0.6, 1.0, t);
   float rimA = rimShape * reached * rimOut * 0.65;
 
-  float a = clamp(ringA + rimA, 0.0, 1.0);
-  float3 col = mix(tint, float3(1.0), core * 0.5 * ringFade);
+  float a = clamp(sheen + rimA, 0.0, 1.0);
+  float3 col = mix(tint, float3(1.0), sheen * 2.0);
   return half4(col * a, a);
 }
 `;
@@ -127,20 +125,25 @@ export function SaveWave({ event }: SaveWaveProps) {
   }, [event, progress, reduceMotion]);
 
   // Ripple the living surface along with the ring of light.
-  const { rippleOrigin, rippleRadius, rippleAmp } = surfaceSignal;
+  const { rippleOrigin, rippleRadius, rippleAmp, rippleTint, rippleGlow } =
+    surfaceSignal;
+  const tint = TINTS[tone];
   useDerivedValue(() => {
     const t = progress.value;
-    if (reduceMotion || t >= 1) {
+    if (t >= 1) {
       rippleAmp.set(0);
+      rippleGlow.set(0);
       return;
     }
     const ringT = Math.min(1, t / RING_SHARE);
     rippleOrigin.set(origin);
+    rippleTint.set(tint);
     rippleRadius.set(maxR * (1 - (1 - ringT) * (1 - ringT)));
-    rippleAmp.set(SURFACE_PUSH * (1 - t));
+    rippleAmp.set(reduceMotion ? 0 : SURFACE_PUSH * (1 - t));
+    // The colour lingers a little after the ring has passed, then fades.
+    rippleGlow.set(Math.min(1, t * 8) * (1 - Math.max(0, (t - 0.45) / 0.55)));
   });
 
-  const tint = TINTS[tone];
   const uniforms = useDerivedValue<Uniforms>(() => ({
     size: [width, height],
     origin,

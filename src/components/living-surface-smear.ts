@@ -29,6 +29,10 @@ uniform float focusDim;
 uniform float2 rippleOrigin;
 uniform float rippleRadius;
 uniform float rippleAmp;
+uniform float3 rippleTint;
+uniform float rippleGlow;
+uniform float4 fieldRect;
+uniform float fieldPush;
 
 // Lattice-free smooth noise (sines only, no hashing).
 float smoothNoise(float2 p) {
@@ -116,11 +120,32 @@ float lavaField(float2 p, float b) {
   return f;
 }
 
+float sdRoundRect(float2 p, float4 r, float rad) {
+  float2 c = r.xy + r.zw * 0.5;
+  float2 q = abs(p - c) - r.zw * 0.5 + rad;
+  return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - rad;
+}
+
 half4 main(float2 pos) {
   // A ripple running outward through the surface (e.g. after a thought is
   // saved): pixels near the moving ring are pushed along it, with a couple of
   // fading wavelets behind.
   float2 position = pos;
+
+  // The surface flows around the text field: near the field the picture is
+  // pulled from closer to it, so the matter looks pushed out and around.
+  float fieldD = 10000.0;
+  if (fieldPush > 0.001 && fieldRect.z > 1.0) {
+    fieldD = sdRoundRect(pos, fieldRect, 22.0);
+    float2 c = fieldRect.xy + fieldRect.zw * 0.5;
+    float2 away = pos - c;
+    float2 n = normalize(away * float2(1.0 / max(fieldRect.z, 1.0), 1.0 / max(fieldRect.w, 1.0)) + 0.0001);
+    float push = fieldPush * exp(-max(fieldD, 0.0) / 70.0);
+    // Slight swirl along the edge, so it reads as flow, not a dent.
+    float2 tangent = float2(-n.y, n.x);
+    position = pos - n * push + tangent * push * 0.35 * sin(motionPhase * 6.28318530718 * 2.0);
+  }
+
   if (rippleAmp > 0.001) {
     float2 rv = pos - rippleOrigin;
     float rl = max(length(rv), 0.001);
@@ -178,6 +203,25 @@ half4 main(float2 pos) {
 
   // Calm the surface while the user is typing: fade toward the dark base.
   col = mix(col, backgroundColor, focusDim);
+
+  // A soft shadow hugging the text field: the matter parts around it.
+  if (fieldPush > 0.001 && fieldRect.z > 1.0) {
+    float shade = (1.0 - smoothstep(-6.0, 46.0, fieldD)) * 0.55 * clamp(fieldPush / 26.0, 0.0, 1.0);
+    col = mix(col, backgroundColor * 0.6, shade);
+  }
+
+  // The save ripple colours the matter itself: inside the ring the surface
+  // takes the tint (green when saved, red when not) and glows from within.
+  if (rippleGlow > 0.001) {
+    float rl = length(pos - rippleOrigin);
+    float dr = rl - rippleRadius;
+    float ring = exp(-dr * dr / 2200.0);
+    float behind = dr < 0.0 ? exp(dr / 180.0) * (0.55 + 0.45 * cos(dr * 0.07)) : 0.0;
+    float w = clamp((ring + behind * 0.7) * rippleGlow, 0.0, 1.0);
+    float lum = dot(col, float3(0.299, 0.587, 0.114));
+    float3 tinted = rippleTint * (0.25 + 1.6 * lum) + rippleTint * ring * 0.35;
+    col = mix(col, tinted, w);
+  }
 
   // Fine static grain.
   float g = fract(sin(dot(position, float2(12.9898, 78.233))) * 43758.5453);

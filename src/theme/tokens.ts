@@ -176,9 +176,9 @@ export const smearModes: Record<SmearModeName, { label: string; value: number }>
 };
 
 export const smearPreset = {
-  motionDuration: 40000,
+  motionDuration: 60000,
   // Independent slow clock for the lava masses (non-commensurate period).
-  lavaDuration: 97000,
+  lavaDuration: 145000,
   noiseScale: 4.6,
   warpStrength: 2.0,
   orbitRadius: [1.1, 0.8] as const,
@@ -190,6 +190,12 @@ export const smearPreset = {
 export const surfaceReaction = {
   // Fraction of the picture mixed toward the dark base while the field is focused.
   focusDim: 0.3,
+  // The capture screen too keeps the surface soft and a little dim, so it does
+  // not pull the eye away from writing.
+  homeDim: 0.18,
+  homeBlur: 7,
+  // How far the surface is pushed away around the text field, points.
+  fieldPush: 26,
   // How much slower the surface moves while the field is focused (0 = no change).
   focusSlowdown: 0.55,
   // Transition length, ms.

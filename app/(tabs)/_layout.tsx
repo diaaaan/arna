@@ -21,9 +21,9 @@ export default function TabLayout() {
           sceneStyle: styles.scene,
         }}
       >
-        <Tabs.Screen name="index" options={{ title: 'Write' }} />
-        <Tabs.Screen name="thoughts" options={{ title: 'Thoughts' }} />
-        <Tabs.Screen name="collections" options={{ title: 'Collections' }} />
+        <Tabs.Screen name="index" options={{ title: 'write' }} />
+        <Tabs.Screen name="thoughts" options={{ title: 'thoughts' }} />
+        <Tabs.Screen name="collections" options={{ title: 'collections' }} />
       </Tabs>
     </View>
   );

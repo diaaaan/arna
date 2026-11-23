@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, type ComponentRef } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ComponentRef,
+} from 'react';
 import {
   Keyboard,
   Pressable,
@@ -40,6 +46,27 @@ export function ThoughtInput({ onSubmit }: ThoughtInputProps) {
   const [isFocused, setIsFocused] = useState(false);
   const inputRef = useRef<ComponentRef<typeof TextInput>>(null);
   const canSubmit = rawText.trim().length > 0 && !isSubmitting;
+
+  // Tell the living surface where the field is, so it can flow around it.
+  const frameRef = useRef<ComponentRef<typeof Pressable>>(null);
+  const reportFieldRect = useCallback(() => {
+    requestAnimationFrame(() => {
+      frameRef.current?.measureInWindow((x, y, width, height) => {
+        if (width > 0) {
+          surfaceSignal.fieldRect.set([x, y, width, height]);
+        }
+      });
+    });
+  }, []);
+
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', reportFieldRect);
+    const hide = Keyboard.addListener('keyboardDidHide', reportFieldRect);
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, [reportFieldRect]);
 
   useEffect(() => {
     // Android keeps the field focused after the keyboard is hidden with the
@@ -88,6 +115,8 @@ export function ThoughtInput({ onSubmit }: ThoughtInputProps) {
   return (
     <View style={styles.container}>
       <Pressable
+        ref={frameRef}
+        onLayout={reportFieldRect}
         accessible={false}
         onPress={() => inputRef.current?.focus()}
         style={[styles.inputFrame, isFocused && styles.inputFrameFocused]}
@@ -113,7 +142,7 @@ export function ThoughtInput({ onSubmit }: ThoughtInputProps) {
               setSurfaceFocus(false);
             }}
             onPressIn={() => inputRef.current?.focus()}
-            placeholder="Write a thought…"
+            placeholder="write a thought…"
             placeholderTextColor={colors.textSecondary}
             selectionColor={colors.focus}
             cursorColor={colors.focus}
@@ -137,7 +166,7 @@ export function ThoughtInput({ onSubmit }: ThoughtInputProps) {
           pressed && canSubmit && styles.submitButtonPressed,
         ]}
       >
-        <Text style={styles.submitButtonText}>Send</Text>
+        <Text style={styles.submitButtonText}>send</Text>
       </Pressable>
     </View>
   );

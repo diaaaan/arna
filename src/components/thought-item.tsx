@@ -16,7 +16,7 @@ function formatCreatedAt(createdAt: string) {
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
-  });
+  }).toLowerCase();
 }
 
 export function ThoughtItem({ thought, onRetryAnalysis }: ThoughtItemProps) {

@@ -48,31 +48,31 @@ import {
 } from '../../src/theme/tokens';
 
 const filters = [
-  { id: 'all', label: 'All', icon: 'apps-outline' },
-  { id: 'tasks', label: 'Tasks', icon: 'checkbox-outline' },
-  { id: 'shopping', label: 'Shopping', icon: 'bag-handle-outline' },
-  { id: 'ideas', label: 'Ideas', icon: 'bulb-outline' },
-  { id: 'quotes', label: 'Quotes', icon: 'chatbox-ellipses-outline' },
-  { id: 'unsorted', label: 'Unsorted', icon: 'help-circle-outline' },
+  { id: 'all', label: 'all', icon: 'apps-outline' },
+  { id: 'tasks', label: 'tasks', icon: 'checkbox-outline' },
+  { id: 'shopping', label: 'shopping', icon: 'bag-handle-outline' },
+  { id: 'ideas', label: 'ideas', icon: 'bulb-outline' },
+  { id: 'quotes', label: 'quotes', icon: 'chatbox-ellipses-outline' },
+  { id: 'unsorted', label: 'unsorted', icon: 'help-circle-outline' },
 ] as const satisfies readonly CategoryWheelItem[];
 
 type Filter = (typeof filters)[number]['id'];
 type LoadState = 'loading' | 'ready' | 'error';
 type MixedCollectionItem = CollectionListItem & {
-  typeLabel: 'Task' | 'Shopping' | 'Idea' | 'Quote' | 'Unsorted';
+  typeLabel: 'task' | 'shopping' | 'idea' | 'quote' | 'unsorted';
   categoryLabel: string;
   text: string;
 };
 
 const categoryLabels: Record<InterpretationCategory, string> = {
-  work: 'Work',
-  home: 'Home',
-  health: 'Health',
-  finance: 'Finance',
-  learning: 'Learning',
-  creativity: 'Creativity',
-  personal: 'Personal',
-  unknown: 'No category',
+  work: 'work',
+  home: 'home',
+  health: 'health',
+  finance: 'finance',
+  learning: 'learning',
+  creativity: 'creativity',
+  personal: 'personal',
+  unknown: 'no category',
 };
 
 function sortNewestFirst<Item extends CollectionListItem>(items: Item[]) {
@@ -118,7 +118,7 @@ export default function CollectionsScreen() {
   const [navHeight, setNavHeight] = useState(0);
 
   const selectedLabel =
-    filters.find((filter) => filter.id === selectedFilter)?.label ?? 'All';
+    filters.find((filter) => filter.id === selectedFilter)?.label ?? 'all';
 
   const loadCollections = useCallback(async (showLoading = true) => {
     if (showLoading) {
@@ -178,14 +178,14 @@ export default function CollectionsScreen() {
         ...tasks.map((task) => ({
           id: task.id,
           createdAt: task.createdAt,
-          typeLabel: 'Task' as const,
+          typeLabel: 'task' as const,
           categoryLabel: getCategoryLabel(task.originThoughtId),
           text: task.title,
         })),
         ...shoppingItems.map((shoppingItem) => ({
           id: shoppingItem.id,
           createdAt: shoppingItem.createdAt,
-          typeLabel: 'Shopping' as const,
+          typeLabel: 'shopping' as const,
           categoryLabel: getCategoryLabel(shoppingItem.originThoughtId),
           text: `${shoppingItem.title}${
             shoppingItem.quantity === null
@@ -196,21 +196,21 @@ export default function CollectionsScreen() {
         ...ideas.map((idea) => ({
           id: idea.id,
           createdAt: idea.createdAt,
-          typeLabel: 'Idea' as const,
+          typeLabel: 'idea' as const,
           categoryLabel: getCategoryLabel(idea.originThoughtId),
           text: idea.title,
         })),
         ...quotes.map((quote) => ({
           id: quote.id,
           createdAt: quote.createdAt,
-          typeLabel: 'Quote' as const,
+          typeLabel: 'quote' as const,
           categoryLabel: getCategoryLabel(quote.originThoughtId),
           text: quote.text,
         })),
         ...unsortedThoughts.map((thought) => ({
           id: thought.id,
           createdAt: thought.createdAt,
-          typeLabel: 'Unsorted' as const,
+          typeLabel: 'unsorted' as const,
           categoryLabel: getCategoryLabel(thought.originThoughtId),
           text: thought.text,
         })),
@@ -271,7 +271,7 @@ export default function CollectionsScreen() {
       return (
         <View style={styles.stateContainer}>
           <ActivityIndicator color={colors.accent} />
-          <Text style={styles.stateText}>Loading…</Text>
+          <Text style={styles.stateText}>loading…</Text>
         </View>
       );
     }
@@ -279,7 +279,7 @@ export default function CollectionsScreen() {
     if (loadState === 'error') {
       return (
         <View style={styles.stateContainer}>
-          <Text style={styles.stateText}>Couldn’t load your collections.</Text>
+          <Text style={styles.stateText}>couldn’t load your collections.</Text>
         </View>
       );
     }
@@ -305,7 +305,7 @@ export default function CollectionsScreen() {
         return (
           <CollectionList
             items={ideas}
-            emptyMessage="Your ideas will show up here."
+            emptyMessage="your ideas will show up here."
             bottomPadding={bottomPadding}
             getText={getIdeaText}
           />
@@ -314,7 +314,7 @@ export default function CollectionsScreen() {
         return (
           <CollectionList
             items={quotes}
-            emptyMessage="Saved quotes will show up here."
+            emptyMessage="saved quotes will show up here."
             bottomPadding={bottomPadding}
             getText={getQuoteText}
           />
@@ -323,7 +323,7 @@ export default function CollectionsScreen() {
         return (
           <CollectionList
             items={unsortedThoughts}
-            emptyMessage="Thoughts Arna couldn’t sort yet will show up here."
+            emptyMessage="thoughts arna couldn’t sort yet will show up here."
             bottomPadding={bottomPadding}
             getText={getUnsortedText}
           />
@@ -332,7 +332,7 @@ export default function CollectionsScreen() {
         return (
           <CollectionList
             items={mixedItems}
-            emptyMessage="What Arna makes from your thoughts will show up here."
+            emptyMessage="what arna makes from your thoughts will show up here."
             bottomPadding={bottomPadding}
             getText={getMixedText}
             getLabel={getMixedLabel}
@@ -345,7 +345,7 @@ export default function CollectionsScreen() {
     <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
       <View style={styles.header}>
         <View style={styles.headerText}>
-          <Text style={styles.headerOverline}>Collections</Text>
+          <Text style={styles.headerOverline}>collections</Text>
           <Text style={styles.headerTitle}>{selectedLabel}</Text>
         </View>
       </View>
@@ -388,7 +388,7 @@ const styles = StyleSheet.create({
     ...typography.navigationLabel,
     fontSize: 11,
     letterSpacing: 1,
-    textTransform: 'uppercase',
+    textTransform: 'lowercase',
     color: colors.textSecondary,
   },
   headerTitle: {

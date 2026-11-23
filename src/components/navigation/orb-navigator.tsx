@@ -60,9 +60,9 @@ type Section = {
 const ANGLE_STEP = 42;
 const ANGLE_FIRST = -90 - ANGLE_STEP;
 const SECTIONS: readonly Section[] = [
-  { route: 'thoughts', label: 'Thoughts', icon: 'reader-outline', activeIcon: 'reader', angle: ANGLE_FIRST },
-  { route: 'index', label: 'Write', icon: 'create-outline', activeIcon: 'create', angle: -90 },
-  { route: 'collections', label: 'Collections', icon: 'albums-outline', activeIcon: 'albums', angle: -90 + ANGLE_STEP },
+  { route: 'thoughts', label: 'thoughts', icon: 'reader-outline', activeIcon: 'reader', angle: ANGLE_FIRST },
+  { route: 'index', label: 'write', icon: 'create-outline', activeIcon: 'create', angle: -90 },
+  { route: 'collections', label: 'collections', icon: 'albums-outline', activeIcon: 'albums', angle: -90 + ANGLE_STEP },
 ];
 
 // Geometry, in points. The box spans the screen width and sits on its bottom edge.

@@ -24,12 +24,17 @@ export const SURFACE_EFFECT = (() => {
 const RESOLUTION = vec(SURFACE_SIZE.width, SURFACE_SIZE.height);
 const style = smearStyle;
 const focusDim = surfaceReaction.focusDim;
+const homeDim = surfaceReaction.homeDim;
+const fieldPush = surfaceReaction.fieldPush;
 const sceneDim = surfaceReaction.sceneDim;
 
 export type SurfaceState = {
   rippleOrigin: [number, number];
   rippleRadius: number;
   rippleAmp: number;
+  rippleTint: [number, number, number];
+  rippleGlow: number;
+  fieldRect: [number, number, number, number];
   motionPhase: number;
   slowPhase: number;
   mode: number;
@@ -65,11 +70,17 @@ export function surfaceUniforms(state: SurfaceState): Uniforms {
     rippleOrigin: state.rippleOrigin,
     rippleRadius: state.rippleRadius,
     rippleAmp: state.rippleAmp,
+    rippleTint: state.rippleTint,
+    rippleGlow: state.rippleGlow,
+    fieldRect: state.fieldRect,
+    // The surface flows around the field only on the capture screen.
+    fieldPush: fieldPush * (1 - state.scene),
     slowPhase: state.slowPhase,
     // Typing and other sections both calm the surface; combine them.
     focusDim:
       1 -
-      (1 - focusDim * state.focus) *
+      (1 - homeDim) *
+        (1 - focusDim * state.focus) *
         (1 - sceneDim * state.scene),
   };
 }
@@ -85,6 +96,9 @@ export function useSurfaceUniforms() {
     rippleOrigin,
     rippleRadius,
     rippleAmp,
+    rippleTint,
+    rippleGlow,
+    fieldRect,
   } = surfaceSignal;
   return useDerivedValue<Uniforms>(() =>
     surfaceUniforms({
@@ -96,6 +110,9 @@ export function useSurfaceUniforms() {
       rippleOrigin: rippleOrigin.value,
       rippleRadius: rippleRadius.value,
       rippleAmp: rippleAmp.value,
+      rippleTint: rippleTint.value,
+      rippleGlow: rippleGlow.value,
+      fieldRect: fieldRect.value,
     }),
   );
 }

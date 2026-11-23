@@ -86,7 +86,7 @@ export default function CaptureScreen() {
   // Development only: long-press the question to preview the error state.
   const previewError = useCallback(() => {
     if (__DEV__) {
-      showFeedback("Couldn't save this one · Try again", 'error');
+      showFeedback("couldn’t save this one · try again", 'error');
     }
   }, [showFeedback]);
 
@@ -95,7 +95,7 @@ export default function CaptureScreen() {
 
     try {
       await appendThought(thought);
-      showFeedback('Saved', 'success');
+      showFeedback('saved', 'success');
       requestAnimationFrame(() => {
         void analyzeThought(thought).catch(() => {
           // Analysis is best-effort and must never interrupt thought capture.
@@ -104,7 +104,7 @@ export default function CaptureScreen() {
       return true;
     } catch (error: unknown) {
       console.error('Failed to save thought.', error);
-      showFeedback("Couldn't save this one · Try again", 'error');
+      showFeedback("couldn’t save this one · try again", 'error');
       return false;
     }
   }, [showFeedback]);
@@ -169,7 +169,7 @@ export default function CaptureScreen() {
               style={styles.title}
               onLongPress={__DEV__ ? previewError : undefined}
             >
-              What’s on your mind?
+              what’s on your mind?
             </Text>
 
             <View ref={inputAreaRef} style={styles.inputArea}>

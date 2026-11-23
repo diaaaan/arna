@@ -20,4 +20,10 @@ export const surfaceSignal = {
   rippleOrigin: makeMutable<[number, number]>([0, 0]),
   rippleRadius: makeMutable(0),
   rippleAmp: makeMutable(0),
+  // Colour the ripple paints into the matter, and how strongly (0..1).
+  rippleTint: makeMutable<[number, number, number]>([0.44, 0.89, 0.78]),
+  rippleGlow: makeMutable(0),
+  // The text field the surface flows around: [x, y, width, height] in screen
+  // points (width 0 = none).
+  fieldRect: makeMutable<[number, number, number, number]>([0, 0, 0, 0]),
 };
