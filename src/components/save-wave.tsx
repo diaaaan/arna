@@ -42,17 +42,19 @@ const SURFACE_PUSH = 48;
 const WAVE_SOURCE = `
 uniform float2 size;
 uniform float4 rect;
+uniform float rad;
 uniform float maxR;
 uniform float progress;
 uniform float3 tint;
+uniform float rimStrength;
 
 half4 main(float2 p) {
   float t = progress;
   float ringT = clamp(t / ${RING_SHARE.toFixed(2)}, 0.0, 1.0);
   float r = maxR * (1.0 - pow(1.0 - ringT, 2.0));
   float2 c = rect.xy + rect.zw * 0.5;
-  float2 q = abs(p - c) - rect.zw * 0.5 + 22.0;
-  float dist = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - 22.0;
+  float2 q = abs(p - c) - rect.zw * 0.5 + rad;
+  float dist = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - rad;
 
   // 1. The ring itself is the Living Surface moving and changing colour (see
   // the smear shader); this overlay draws only the rim.
@@ -66,7 +68,7 @@ half4 main(float2 p) {
   rimShape += 0.3 * (exp(-dl.x / 44.0) + exp(-drr.x / 44.0) + exp(-dl.y / 44.0) + exp(-drr.y / 44.0));
   float reached = smoothstep(-30.0, 60.0, r - dist);
   float rimOut = 1.0 - smoothstep(0.6, 1.0, t);
-  float rimA = rimShape * reached * rimOut * 0.65;
+  float rimA = rimShape * reached * rimOut * rimStrength;
 
   float a = clamp(rimA, 0.0, 1.0);
   float3 col = tint;
@@ -90,6 +92,13 @@ function hexToRgb(hex: string): [number, number, number] {
 const TINTS = {
   success: hexToRgb(kitColors.status.success),
   error: hexToRgb(kitColors.status.error),
+} as const;
+
+// How much colour each outcome brings: kept low so it tints, not floods; red
+// a little quieter still, so an error does not alarm.
+const STRENGTH = {
+  success: { surface: 0.85, rim: 0.4 },
+  error: { surface: 0.65, rim: 0.32 },
 } as const;
 
 type SaveWaveProps = {
@@ -152,16 +161,22 @@ export function SaveWave({ event }: SaveWaveProps) {
     rippleRadius.set(maxR * (1 - (1 - ringT) * (1 - ringT)));
     rippleAmp.set(reduceMotion ? 0 : SURFACE_PUSH * (1 - t));
     // The colour lingers a little after the ring has passed, then fades.
-    rippleGlow.set(Math.min(1, t * 8) * (1 - Math.max(0, (t - 0.45) / 0.55)));
+    rippleGlow.set(
+      STRENGTH[tone].surface *
+        Math.min(1, t * 8) *
+        (1 - Math.min(1, Math.max(0, (t - 0.3) / 0.45))),
+    );
   });
 
   const uniforms = useDerivedValue<Uniforms>(() => ({
     size: [width, height],
     rect,
+    rad: surfaceSignal.fieldRadius.get(),
     maxR,
     // With reduced motion only the rim shows, without the ring.
     progress: reduceMotion ? 0.55 + progress.value * 0.45 : progress.value,
     tint,
+    rimStrength: STRENGTH[tone].rim,
   }));
 
   const badgeStyle = useAnimatedStyle(() => {

@@ -1,19 +1,22 @@
-import { useEffect, useRef, type ComponentRef } from "react";
-import { StyleSheet, View } from "react-native";
-import { Blur, Canvas, Fill, Rect, Shader } from "@shopify/react-native-skia";
-import {
+import { useEffect } from 'react';
+import { StyleSheet } from 'react-native';
+import { Blur, Canvas, Fill, Rect, Shader } from '@shopify/react-native-skia';
+import { scheduleOnUI } from 'react-native-worklets';
+import Animated, {
+  measure,
+  useAnimatedRef,
   useDerivedValue,
   useFrameCallback,
   useReducedMotion,
-} from "react-native-reanimated";
+} from 'react-native-reanimated';
 
-import { colors, smearPreset, surfaceReaction } from "../theme/tokens";
-import { surfaceSignal } from "../theme/surface-signal";
+import { colors, smearPreset, surfaceReaction } from '../theme/tokens';
+import { surfaceSignal } from '../theme/surface-signal';
 import {
   SURFACE_EFFECT,
   SURFACE_SIZE,
   useSurfaceUniforms,
-} from "./surface-uniforms";
+} from './surface-uniforms';
 
 export function AmbientBackground() {
   const reduceMotion = useReducedMotion();
@@ -26,7 +29,7 @@ export function AmbientBackground() {
   const lavaDuration = smearPreset.lavaDuration;
   const focusSlowdown = surfaceReaction.focusSlowdown;
   const frameCallback = useFrameCallback((frame) => {
-    "worklet";
+    'worklet';
     const dt = frame.timeSincePreviousFrame ?? 0;
     // Other sections freeze the surface; it only lives on the capture screen.
     const speed = (1 - focusSlowdown * focus.value) * (1 - scene.value);
@@ -56,15 +59,22 @@ export function AmbientBackground() {
   const blur = useDerivedValue(() => sceneBlur * scene.value);
   const uniforms = useSurfaceUniforms();
 
-  const frameRef = useRef<ComponentRef<typeof View>>(null);
+  // Where the canvas sits on screen. The text field is tracked the same way
+  // (measure on the UI thread, page coordinates), so the two always agree.
+  const frameRef = useAnimatedRef<Animated.View>();
+  const { surfaceOffset } = surfaceSignal;
   const reportOffset = () => {
-    frameRef.current?.measureInWindow((x, y) => {
-      surfaceSignal.surfaceOffset.set([x, y]);
+    scheduleOnUI(() => {
+      'worklet';
+      const m = measure(frameRef);
+      if (m) {
+        surfaceOffset.set([m.pageX, m.pageY]);
+      }
     });
   };
 
   return (
-    <View
+    <Animated.View
       ref={frameRef}
       onLayout={reportOffset}
       pointerEvents="none"
@@ -84,13 +94,13 @@ export function AmbientBackground() {
           </Rect>
         ) : null}
       </Canvas>
-    </View>
+    </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
   canvas: {
-    position: "absolute",
+    position: 'absolute',
     top: 0,
     left: 0,
     width: SURFACE_SIZE.width,

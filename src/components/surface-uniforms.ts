@@ -35,6 +35,7 @@ export type SurfaceState = {
   rippleTint: [number, number, number];
   rippleGlow: number;
   fieldRect: [number, number, number, number];
+  fieldRadius: number;
   motionPhase: number;
   slowPhase: number;
   mode: number;
@@ -73,6 +74,7 @@ export function surfaceUniforms(state: SurfaceState): Uniforms {
     rippleTint: state.rippleTint,
     rippleGlow: state.rippleGlow,
     fieldRect: state.fieldRect,
+    fieldRadius: state.fieldRadius,
     // The surface flows around the field only on the capture screen.
     fieldPush: fieldPush * (1 - state.scene),
     slowPhase: state.slowPhase,
@@ -99,6 +101,7 @@ export function useSurfaceUniforms() {
     rippleTint,
     rippleGlow,
     fieldRect,
+    fieldRadius,
   } = surfaceSignal;
   return useDerivedValue<Uniforms>(() =>
     surfaceUniforms({
@@ -113,6 +116,7 @@ export function useSurfaceUniforms() {
       rippleTint: rippleTint.value,
       rippleGlow: rippleGlow.value,
       fieldRect: fieldRect.value,
+      fieldRadius: fieldRadius.value,
     }),
   );
 }

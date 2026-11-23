@@ -1,10 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type ComponentRef,
-} from 'react';
+import { useEffect, useRef, useState, type ComponentRef } from 'react';
 import {
   Keyboard,
   Pressable,
@@ -14,7 +8,13 @@ import {
   View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Easing, withTiming } from 'react-native-reanimated';
+import Animated, {
+  Easing,
+  measure,
+  useAnimatedRef,
+  useFrameCallback,
+  withTiming,
+} from 'react-native-reanimated';
 
 import {
   colors,
@@ -47,27 +47,39 @@ export function ThoughtInput({ onSubmit }: ThoughtInputProps) {
   const inputRef = useRef<ComponentRef<typeof TextInput>>(null);
   const canSubmit = rawText.trim().length > 0 && !isSubmitting;
 
-  // Tell the living surface where the field is, so it can flow around it.
-  const frameRef = useRef<ComponentRef<typeof Pressable>>(null);
-  const reportFieldRect = useCallback(() => {
-    requestAnimationFrame(() => {
-      frameRef.current?.measureInWindow((x, y, width, height) => {
-        if (width > 0) {
-          const [ox, oy] = surfaceSignal.surfaceOffset.get();
-          surfaceSignal.fieldRect.set([x - ox, y - oy, width, height]);
-        }
-      });
-    });
-  }, []);
-
-  useEffect(() => {
-    const show = Keyboard.addListener('keyboardDidShow', reportFieldRect);
-    const hide = Keyboard.addListener('keyboardDidHide', reportFieldRect);
-    return () => {
-      show.remove();
-      hide.remove();
-    };
-  }, [reportFieldRect]);
+  // Tell the living surface where the field is, so it can flow around it and
+  // start the save ripple from its outline. The frame is measured on the UI
+  // thread every frame (page coordinates, relative to the surface canvas), so
+  // it follows the keyboard, layout changes and any future field size.
+  const frameRef = useAnimatedRef<Animated.View>();
+  const { fieldRect, surfaceOffset } = surfaceSignal;
+  const fieldRadius = radius.lg;
+  useFrameCallback(() => {
+    'worklet';
+    const m = measure(frameRef);
+    if (!m || m.width <= 0) {
+      return;
+    }
+    const [ox, oy] = surfaceOffset.get();
+    const next: [number, number, number, number] = [
+      m.pageX - ox,
+      m.pageY - oy,
+      m.width,
+      m.height,
+    ];
+    const prev = fieldRect.get();
+    if (
+      Math.abs(prev[0] - next[0]) > 0.5 ||
+      Math.abs(prev[1] - next[1]) > 0.5 ||
+      Math.abs(prev[2] - next[2]) > 0.5 ||
+      Math.abs(prev[3] - next[3]) > 0.5
+    ) {
+      fieldRect.set(next);
+    }
+    if (surfaceSignal.fieldRadius.get() !== fieldRadius) {
+      surfaceSignal.fieldRadius.set(fieldRadius);
+    }
+  });
 
   useEffect(() => {
     // Android keeps the field focused after the keyboard is hidden with the
@@ -115,47 +127,47 @@ export function ThoughtInput({ onSubmit }: ThoughtInputProps) {
 
   return (
     <View style={styles.container}>
-      <Pressable
-        ref={frameRef}
-        onLayout={reportFieldRect}
-        accessible={false}
-        onPress={() => inputRef.current?.focus()}
-        style={[styles.inputFrame, isFocused && styles.inputFrameFocused]}
-      >
-        <LinearGradient
-          pointerEvents="none"
-          colors={isFocused ? gradients.inputFocus : gradients.inputIdle}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.inputFrameDecoration}
-        />
-        <View style={styles.inputSurface}>
-          <TextInput
-            ref={inputRef}
-            value={rawText}
-            onChangeText={setRawText}
-            onFocus={() => {
-              setIsFocused(true);
-              setSurfaceFocus(true);
-            }}
-            onBlur={() => {
-              setIsFocused(false);
-              setSurfaceFocus(false);
-            }}
-            onPressIn={() => inputRef.current?.focus()}
-            placeholder="write a thought…"
-            placeholderTextColor={colors.textSecondary}
-            selectionColor={colors.focus}
-            cursorColor={colors.focus}
-            multiline
-            blurOnSubmit={false}
-            submitBehavior="newline"
-            textAlignVertical="top"
-            style={styles.input}
-            accessibilityLabel="New thought"
+      <Animated.View ref={frameRef} collapsable={false}>
+        <Pressable
+          accessible={false}
+          onPress={() => inputRef.current?.focus()}
+          style={[styles.inputFrame, isFocused && styles.inputFrameFocused]}
+        >
+          <LinearGradient
+            pointerEvents="none"
+            colors={isFocused ? gradients.inputFocus : gradients.inputIdle}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.inputFrameDecoration}
           />
-        </View>
-      </Pressable>
+          <View style={styles.inputSurface}>
+            <TextInput
+              ref={inputRef}
+              value={rawText}
+              onChangeText={setRawText}
+              onFocus={() => {
+                setIsFocused(true);
+                setSurfaceFocus(true);
+              }}
+              onBlur={() => {
+                setIsFocused(false);
+                setSurfaceFocus(false);
+              }}
+              onPressIn={() => inputRef.current?.focus()}
+              placeholder="write a thought…"
+              placeholderTextColor={colors.textSecondary}
+              selectionColor={colors.focus}
+              cursorColor={colors.focus}
+              multiline
+              blurOnSubmit={false}
+              submitBehavior="newline"
+              textAlignVertical="top"
+              style={styles.input}
+              accessibilityLabel="New thought"
+            />
+          </View>
+        </Pressable>
+      </Animated.View>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Send thought"

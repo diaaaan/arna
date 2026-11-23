@@ -32,6 +32,7 @@ uniform float rippleAmp;
 uniform float3 rippleTint;
 uniform float rippleGlow;
 uniform float4 fieldRect;
+uniform float fieldRadius;
 uniform float fieldPush;
 
 // Lattice-free smooth noise (sines only, no hashing).
@@ -136,7 +137,7 @@ half4 main(float2 pos) {
   // pulled from closer to it, so the matter looks pushed out and around.
   float fieldD = 10000.0;
   if (fieldPush > 0.001 && fieldRect.z > 1.0) {
-    fieldD = sdRoundRect(pos, fieldRect, 22.0);
+    fieldD = sdRoundRect(pos, fieldRect, fieldRadius);
     float2 c = fieldRect.xy + fieldRect.zw * 0.5;
     float2 away = pos - c;
     float2 n = normalize(away * float2(1.0 / max(fieldRect.z, 1.0), 1.0 / max(fieldRect.w, 1.0)) + 0.0001);
@@ -153,13 +154,13 @@ half4 main(float2 pos) {
   float rippleCrest = 0.0;
   float rippleDist = 10000.0;
   if (rippleAmp > 0.001 || rippleGlow > 0.001) {
-    rippleDist = sdRoundRect(pos, rippleRect, 22.0);
+    rippleDist = sdRoundRect(pos, rippleRect, fieldRadius);
   }
   if (rippleAmp > 0.001) {
     float2 e = float2(1.5, 0.0);
     float2 n = float2(
-      sdRoundRect(pos + e.xy, rippleRect, 22.0) - sdRoundRect(pos - e.xy, rippleRect, 22.0),
-      sdRoundRect(pos + e.yx, rippleRect, 22.0) - sdRoundRect(pos - e.yx, rippleRect, 22.0)
+      sdRoundRect(pos + e.xy, rippleRect, fieldRadius) - sdRoundRect(pos - e.xy, rippleRect, fieldRadius),
+      sdRoundRect(pos + e.yx, rippleRect, fieldRadius) - sdRoundRect(pos - e.yx, rippleRect, fieldRadius)
     );
     n = n / max(length(n), 0.0001);
     float dr = rippleDist - rippleRadius;
@@ -238,11 +239,13 @@ half4 main(float2 pos) {
   // brighter paint takes it, the dark gaps stay dark. No band of its own.
   if (rippleGlow > 0.001) {
     float dr = rippleDist - rippleRadius + (h - 0.5) * 260.0 + (v0 - 0.5) * 140.0;
-    float soaked = 1.0 - smoothstep(-160.0, 40.0, dr);
+    // A trailing band: the colour comes with the front and drains away
+    // behind it, so it never floods the whole screen.
+    float soaked = (1.0 - smoothstep(-60.0, 40.0, dr)) * exp(min(dr, 0.0) / 170.0);
     float lum = dot(col, float3(0.299, 0.587, 0.114));
-    float matter = smoothstep(0.05, 0.35, lum);
-    float w = clamp(soaked * rippleGlow * matter * 0.9, 0.0, 1.0);
-    float3 tinted = rippleTint * (0.3 + 1.9 * lum);
+    float matter = smoothstep(0.08, 0.4, lum);
+    float w = clamp(soaked * rippleGlow * matter * 0.6, 0.0, 1.0);
+    float3 tinted = rippleTint * (0.2 + 1.15 * lum);
     col = mix(col, tinted, w);
   }
 
